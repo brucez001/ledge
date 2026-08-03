@@ -1,32 +1,39 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
+  <!--
+    Ledge app icon: "a lit ledge at dusk".
+
+    A translucent slide-over panel is parked against the screen edge, resting
+    on an L-shaped ledge that glows sodium-lamp amber: the warmth of sessions
+    that stay alive while the panel is tucked away. Rendered with gradients
+    and geometry only; the rasteriser (sips) does not support SVG filters.
+  -->
   <defs>
-    <linearGradient id="background" x1="160" y1="120" x2="865" y2="910" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#293052"/>
-      <stop offset="1" stop-color="#121528"/>
+    <linearGradient id="dusk" x1="330" y1="100" x2="700" y2="924" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2B3160"/>
+      <stop offset="1" stop-color="#151033"/>
     </linearGradient>
-    <linearGradient id="screen" x1="320" y1="270" x2="620" y2="700" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#3A4364"/>
-      <stop offset="1" stop-color="#222840"/>
+    <linearGradient id="sodium" x1="812" y1="210" x2="250" y2="790" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFCE8A"/>
+      <stop offset="1" stop-color="#EF7A2A"/>
     </linearGradient>
-    <linearGradient id="accent" x1="650" y1="205" x2="750" y2="820" gradientUnits="userSpaceOnUse">
-      <stop offset="0" stop-color="#FFB64D"/>
-      <stop offset="1" stop-color="#FF7048"/>
+    <linearGradient id="glass" x1="512" y1="218" x2="512" y2="712" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF" stop-opacity=".16"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity=".07"/>
     </linearGradient>
   </defs>
 
-  <!-- An 824 pt macOS-style tile on the standard 1024 pt icon canvas. -->
-  <path d="M285 100C174 100 100 174 100 285V739C100 850 174 924 285 924H739C850 924 924 850 924 739V285C924 174 850 100 739 100H285Z" fill="url(#background)"/>
-  <path d="M208 252C246 174 316 132 410 116" fill="none" stroke="#FFFFFF" stroke-opacity=".055" stroke-width="34" stroke-linecap="round"/>
+  <!-- 824 pt tile on the standard macOS icon grid -->
+  <path d="M285 100C174 100 100 174 100 285V739C100 850 174 924 285 924H739C850 924 924 850 924 739V285C924 174 850 100 739 100H285Z" fill="url(#dusk)"/>
 
-  <!-- A browser panel parked against a bold L-shaped screen ledge. -->
-  <rect x="232" y="188" width="560" height="650" rx="106" fill="#F7F4EB"/>
-  <rect x="302" y="258" width="362" height="426" rx="58" fill="url(#screen)"/>
+  <!-- The slide-over panel: macOS glass material, parked on the ledge -->
+  <rect x="520" y="218" width="292" height="494" rx="40" fill="url(#glass)"/>
+  <rect x="521.5" y="219.5" width="289" height="491" rx="38.5" fill="none" stroke="#FFFFFF" stroke-opacity=".22" stroke-width="3"/>
 
-  <!-- The control rail and bottom shelf form the Ledge mark at small sizes. -->
-  <path d="M664 188H686C745 188 792 235 792 294V732C792 791 745 838 686 838H302V684H664V188Z" fill="url(#accent)"/>
-
-  <!-- Three large site controls survive the 32 pt icon. -->
-  <rect x="700" y="290" width="54" height="54" rx="18" fill="#FFF9EE"/>
-  <rect x="700" y="382" width="54" height="54" rx="18" fill="#FFF9EE" fill-opacity=".76"/>
-  <rect x="700" y="474" width="54" height="54" rx="18" fill="#FFF9EE" fill-opacity=".52"/>
+  <!-- Sodium glow: stacked strokes approximate a light falloff -->
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M812 236V664C812 717 769 760 716 760H232" stroke="#FF9A3D" stroke-opacity=".05" stroke-width="200"/>
+    <path d="M812 236V664C812 717 769 760 716 760H232" stroke="#FF9A3D" stroke-opacity=".08" stroke-width="164"/>
+    <path d="M812 236V664C812 717 769 760 716 760H232" stroke="#FF9A3D" stroke-opacity=".12" stroke-width="130"/>
+    <path d="M812 236V664C812 717 769 760 716 760H232" stroke="url(#sodium)" stroke-width="96"/>
+  </g>
 </svg>
