@@ -26,6 +26,9 @@ struct SettingsView: View {
                 .tabItem { Label("Privacy", systemImage: "hand.raised") }
         }
         .frame(width: 520, height: 480)
+        // Lifts the window above the floating panel; without it, Settings
+        // opens underneath the panel and appears not to have opened at all.
+        .background(SettingsWindowConfigurator().frame(width: 0, height: 0))
     }
 }
 

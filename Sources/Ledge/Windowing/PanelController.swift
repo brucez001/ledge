@@ -1110,7 +1110,7 @@ final class PanelController: NSObject, ObservableObject {
         )
 
         panel.isFloatingPanel = true
-        panel.level = .floating
+        panel.level = WindowLayering.panel
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         // THE critical flag for a slide-over. `NSPanel` defaults this to
         // `true`, which makes AppKit order the panel out the moment the app
