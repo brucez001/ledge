@@ -1,0 +1,188 @@
+import AppKit
+
+/// Owns the menu-bar (`NSStatusItem`) affordance required by the app's
+/// `.accessory` activation policy -- once the panel itself is hidden, this
+/// is the *only* persistent, discoverable entry point.
+@MainActor
+final class StatusItemController: NSObject, NSMenuDelegate {
+    private let panelController: PanelController
+    private var statusItem: NSStatusItem?
+
+    init(panelController: PanelController) {
+        self.panelController = panelController
+    }
+
+    func install() {
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        item.button?.image = NSImage(
+            systemSymbolName: "rectangle.leadinghalf.inset.filled",
+            accessibilityDescription: "Ledge"
+        )
+        item.button?.image?.isTemplate = true
+
+        let menu = NSMenu()
+        menu.delegate = self
+        item.menu = menu
+        statusItem = item
+    }
+
+    /// Rebuilt every time the menu is about to open (`NSMenuDelegate`), so
+    /// the dock-side/auto-hide checkmarks and the Sites list can never go
+    /// stale between edits made elsewhere (Settings, the favourites sheet).
+    func menuNeedsUpdate(_ menu: NSMenu) {
+        menu.removeAllItems()
+
+        let toggleItem = makeItem("Show/Hide Ledge", #selector(toggleVisibility), key: " ")
+        toggleItem.keyEquivalentModifierMask = [.command, .shift]
+        menu.addItem(toggleItem)
+
+        menu.addItem(.separator())
+
+        let dockLeftItem = makeItem("Dock Left", #selector(dockLeft), key: "")
+        dockLeftItem.state = panelController.dockSide == .left ? .on : .off
+        menu.addItem(dockLeftItem)
+
+        let dockRightItem = makeItem("Dock Right", #selector(dockRight), key: "")
+        dockRightItem.state = panelController.dockSide == .right ? .on : .off
+        menu.addItem(dockRightItem)
+
+        menu.addItem(.separator())
+
+        let keepOpenItem = makeItem("Keep Panel Open", #selector(toggleKeepOpen), key: "")
+        keepOpenItem.state = panelController.isAutoHideEnabled ? .off : .on
+        menu.addItem(keepOpenItem)
+
+        // Surfaced here as well as in Settings: "I have to open the app every
+        // time" is the first thing anyone hits, and the menu bar is where
+        // they will look before they find a preferences window.
+        if LoginItem.isSupported {
+            let loginItem = makeItem("Launch at Login", #selector(toggleLaunchAtLogin), key: "")
+            loginItem.state = LoginItem.isEnabled ? .on : .off
+            menu.addItem(loginItem)
+        }
+
+        menu.addItem(.separator())
+        menu.addItem(makeSitesItem())
+        menu.addItem(.separator())
+
+        let settingsItem = makeItem("Settings…", #selector(openSettings), key: ",")
+        menu.addItem(settingsItem)
+
+        menu.addItem(.separator())
+        menu.addItem(makeItem("Clear Caches", #selector(clearCaches), key: ""))
+        menu.addItem(makeItem("Clear All Website Data…", #selector(clearAllWebsiteData), key: ""))
+
+        let liveCount = panelController.sessionManager.liveSessionCount
+        let sessionsWord = liveCount == 1 ? "session" : "sessions"
+        menu.addItem(makeItem("Free Memory (\(liveCount) live \(sessionsWord))", #selector(closeLiveSessions), key: ""))
+
+        menu.addItem(.separator())
+        menu.addItem(makeItem("Quit Ledge", #selector(quit), key: "q"))
+    }
+
+    private func makeItem(_ title: String, _ action: Selector, key: String) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: key)
+        if !key.isEmpty {
+            item.keyEquivalentModifierMask = [.command]
+        }
+        item.target = self
+        return item
+    }
+
+    private func makeSitesItem() -> NSMenuItem {
+        let sitesItem = NSMenuItem(title: "Sites", action: nil, keyEquivalent: "")
+        let submenu = NSMenu(title: "Sites")
+        let favourites = panelController.favourites.items
+        for (index, favourite) in favourites.enumerated() {
+            let item = NSMenuItem(title: favourite.name, action: #selector(openSite(_:)), keyEquivalent: "")
+            item.target = self
+            item.representedObject = favourite.id
+            // Only the first nine favourites get a ⌘-digit equivalent --
+            // there is no tenth digit key to hand out.
+            if index < 9 {
+                item.keyEquivalent = "\(index + 1)"
+                item.keyEquivalentModifierMask = [.command]
+            }
+            submenu.addItem(item)
+        }
+        if favourites.isEmpty {
+            let placeholder = NSMenuItem(title: "No Favourites Yet", action: nil, keyEquivalent: "")
+            placeholder.isEnabled = false
+            submenu.addItem(placeholder)
+        }
+        sitesItem.submenu = submenu
+        return sitesItem
+    }
+
+    @objc private func toggleVisibility() {
+        panelController.toggleVisibility()
+    }
+
+    @objc private func dockLeft() {
+        panelController.setDockSide(.left)
+    }
+
+    @objc private func dockRight() {
+        panelController.setDockSide(.right)
+    }
+
+    @objc private func toggleKeepOpen() {
+        panelController.toggleAutoHide()
+    }
+
+    @objc private func toggleLaunchAtLogin() {
+        LoginItem.setEnabled(!LoginItem.isEnabled)
+    }
+
+    @objc private func openSite(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? UUID,
+              let favourite = panelController.favourites.favourite(withID: id) else { return }
+        // Unlike the home grid (where the panel is already showing),
+        // choosing a site from this menu has to also reveal the panel --
+        // otherwise, while hidden, the site loads invisibly and the click
+        // looks like it did nothing.
+        panelController.revealAndOpen(favourite)
+    }
+
+    @objc private func openSettings() {
+        // There is no supported AppKit API for "open the Settings scene
+        // from outside SwiftUI" -- `showSettingsWindow:` (current) and
+        // `showPreferencesWindow:` (older SDKs) are the private-but-stable
+        // selectors SwiftUI's own `Settings` scene installs on the
+        // responder chain, and which one exists depends on the OS. If
+        // somehow neither responds (e.g. a future SDK renames it again),
+        // silently doing nothing would be worse than a harmless fallback,
+        // so reveal the panel instead of leaving the click looking dead.
+        if NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil) { return }
+        if NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil) { return }
+        panelController.show()
+    }
+
+    @objc private func clearCaches() {
+        panelController.clearCaches()
+    }
+
+    @objc private func clearAllWebsiteData() {
+        // Signs the user out of every site, so it is confirmed like any
+        // other irreversible, wide-blast-radius action.
+        let alert = NSAlert()
+        alert.messageText = "Clear all website data?"
+        alert.informativeText = "This signs you out of every site in Ledge and cannot be undone."
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "Clear")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        panelController.clearAllWebsiteData()
+    }
+
+    @objc private func closeLiveSessions() {
+        // Routes through the controller (not the session manager directly)
+        // so a browser-mode destination doesn't end up pointing at a
+        // session that no longer exists -- see `PanelController.closeAllSessions`.
+        panelController.closeAllSessions()
+    }
+
+    @objc private func quit() {
+        NSApp.terminate(nil)
+    }
+}

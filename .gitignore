@@ -1,0 +1,14 @@
+# SwiftPM
+.build/
+.swiftpm/
+
+# Local app bundle produced by Scripts/build-local-app.sh
+build/
+
+# Xcode
+*.xcuserstate
+xcuserdata/
+DerivedData/
+
+# macOS
+.DS_Store
