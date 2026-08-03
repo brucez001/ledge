@@ -27,8 +27,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     /// Rebuilt every time the menu is about to open (`NSMenuDelegate`), so
-    /// the dock-side/auto-hide checkmarks and the Sites list can never go
-    /// stale between edits made elsewhere (Settings, the favourites sheet).
+    /// the dock-side, auto-hide and edge-reveal checkmarks and the Sites list
+    /// can never go stale between edits made elsewhere (Settings, the
+    /// favourites sheet).
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
 
@@ -51,6 +52,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         let keepOpenItem = makeItem("Keep Panel Open", #selector(toggleKeepOpen), key: "")
         keepOpenItem.state = panelController.isAutoHideEnabled ? .off : .on
         menu.addItem(keepOpenItem)
+
+        // Mirrors the Settings toggle because this is the one setting people
+        // need in a hurry -- before sharing a screen, an accidental edge
+        // reveal shows whatever is loaded in the panel to everyone watching.
+        let edgeRevealItem = makeItem("Reveal on Edge Hover", #selector(toggleEdgeReveal), key: "")
+        edgeRevealItem.state = panelController.preferences.edgeTriggerEnabled ? .on : .off
+        menu.addItem(edgeRevealItem)
 
         // Surfaced here as well as in Settings: "I have to open the app every
         // time" is the first thing anyone hits, and the menu bar is where
@@ -128,6 +136,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     @objc private func toggleKeepOpen() {
         panelController.toggleAutoHide()
+    }
+
+    @objc private func toggleEdgeReveal() {
+        panelController.preferences.edgeTriggerEnabled.toggle()
     }
 
     @objc private func toggleLaunchAtLogin() {

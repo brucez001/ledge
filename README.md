@@ -130,6 +130,11 @@ Only outside edges of a multi-display desktop respond to hover. An interior
 boundary is a display seam, so Ledge deliberately does not arm it; the global
 hotkey can still reveal Ledge on the display under the pointer.
 
+Edge hover can be turned off at any time from the menu-bar item's **Reveal on
+Edge Hover** entry, or in Settings. This is handy before sharing your screen: the
+panel then only appears when you ask for it with **⇧⌘Space**, the menu bar, or a
+site chosen from the **Sites** submenu.
+
 ## Keyboard shortcuts
 
 | Shortcut | Action |
