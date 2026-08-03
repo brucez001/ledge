@@ -4,15 +4,18 @@
 
     A translucent slide-over panel is parked against the screen edge, resting
     on an L-shaped ledge that glows sodium-lamp amber: the warmth of sessions
-    that stay alive while the panel is tucked away. Rendered with gradients
-    and geometry only; the rasteriser (sips) does not support SVG filters.
+    that stay alive while the panel is tucked away. The ledge docks to the
+    leading edge, matching the app's default dock side and its menu-bar
+    symbol, and anchoring the composition's visual weight. Rendered with
+    gradients and geometry only; the rasteriser (sips) does not support SVG
+    filters.
   -->
   <defs>
-    <linearGradient id="dusk" x1="330" y1="100" x2="700" y2="924" gradientUnits="userSpaceOnUse">
+    <linearGradient id="dusk" x1="694" y1="100" x2="324" y2="924" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#2B3160"/>
       <stop offset="1" stop-color="#151033"/>
     </linearGradient>
-    <linearGradient id="sodium" x1="812" y1="210" x2="250" y2="790" gradientUnits="userSpaceOnUse">
+    <linearGradient id="sodium" x1="212" y1="210" x2="774" y2="790" gradientUnits="userSpaceOnUse">
       <stop offset="0" stop-color="#FFCE8A"/>
       <stop offset="1" stop-color="#EF7A2A"/>
     </linearGradient>
@@ -26,14 +29,14 @@
   <path d="M285 100C174 100 100 174 100 285V739C100 850 174 924 285 924H739C850 924 924 850 924 739V285C924 174 850 100 739 100H285Z" fill="url(#dusk)"/>
 
   <!-- The slide-over panel: macOS glass material, parked on the ledge -->
-  <rect x="520" y="218" width="292" height="494" rx="40" fill="url(#glass)"/>
-  <rect x="521.5" y="219.5" width="289" height="491" rx="38.5" fill="none" stroke="#FFFFFF" stroke-opacity=".22" stroke-width="3"/>
+  <rect x="212" y="218" width="344" height="494" rx="40" fill="url(#glass)"/>
+  <rect x="213.5" y="219.5" width="341" height="491" rx="38.5" fill="none" stroke="#FFFFFF" stroke-opacity=".22" stroke-width="3"/>
 
   <!-- Sodium glow: stacked strokes approximate a light falloff -->
   <g fill="none" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M812 236V664C812 717 769 760 716 760H232" stroke="#FF9A3D" stroke-opacity=".05" stroke-width="200"/>
-    <path d="M812 236V664C812 717 769 760 716 760H232" stroke="#FF9A3D" stroke-opacity=".08" stroke-width="164"/>
-    <path d="M812 236V664C812 717 769 760 716 760H232" stroke="#FF9A3D" stroke-opacity=".12" stroke-width="130"/>
-    <path d="M812 236V664C812 717 769 760 716 760H232" stroke="url(#sodium)" stroke-width="96"/>
+    <path d="M212 236V664C212 717 255 760 308 760H800" stroke="#FF9A3D" stroke-opacity=".05" stroke-width="200"/>
+    <path d="M212 236V664C212 717 255 760 308 760H800" stroke="#FF9A3D" stroke-opacity=".08" stroke-width="164"/>
+    <path d="M212 236V664C212 717 255 760 308 760H800" stroke="#FF9A3D" stroke-opacity=".12" stroke-width="130"/>
+    <path d="M212 236V664C212 717 255 760 308 760H800" stroke="url(#sodium)" stroke-width="96"/>
   </g>
 </svg>
