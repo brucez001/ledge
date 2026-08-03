@@ -215,4 +215,8 @@ privacy behaviour, requirements, or deliberate scope change.
 
 ## Licence
 
-Ledge is available under the [MIT Licence](LICENSE). Copyright © 2026 Bruce Zhu.
+Ledge's source code and original project assets, including the app icon, are
+available under the [MIT Licence](LICENSE). Copyright © 2026 Bruce Zhu.
+
+Names and trademarks belonging to websites or services mentioned in the
+documentation remain the property of their respective owners.
