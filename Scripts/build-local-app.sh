@@ -90,6 +90,57 @@ if [[ ! -f "${ICON_SOURCE}" ]]; then
 fi
 cp "${ICON_SOURCE}" "${RESOURCES_DIR}/AppIcon.icns"
 
+# macOS 26 resolves the icon of an app linked against the 26 SDK from a
+# compiled asset catalogue; the .icns above only serves older systems. Compile
+# one when actool (full Xcode) is available, otherwise warn and continue.
+HAS_ASSET_CATALOG_ICON=0
+if xcrun --find actool >/dev/null 2>&1; then
+  echo "==> Compiling asset-catalogue icon"
+  ICON_WORK="$(mktemp -d "${TMPDIR:-/tmp}/ledge-actool.XXXXXX")"
+  APPICONSET="${ICON_WORK}/Assets.xcassets/AppIcon.appiconset"
+  mkdir -p "${APPICONSET}" "${ICON_WORK}/out"
+  MASTER_PNG="${REPO_ROOT}/Assets/AppIcon.png"
+  for size in 16 32 128 256 512; do
+    sips -z "${size}" "${size}" "${MASTER_PNG}" \
+      --out "${APPICONSET}/icon_${size}x${size}.png" >/dev/null
+    double_size=$((size * 2))
+    sips -z "${double_size}" "${double_size}" "${MASTER_PNG}" \
+      --out "${APPICONSET}/icon_${size}x${size}@2x.png" >/dev/null
+  done
+  cat > "${APPICONSET}/Contents.json" <<'JSON'
+{
+  "images" : [
+    { "idiom" : "mac", "scale" : "1x", "size" : "16x16", "filename" : "icon_16x16.png" },
+    { "idiom" : "mac", "scale" : "2x", "size" : "16x16", "filename" : "icon_16x16@2x.png" },
+    { "idiom" : "mac", "scale" : "1x", "size" : "32x32", "filename" : "icon_32x32.png" },
+    { "idiom" : "mac", "scale" : "2x", "size" : "32x32", "filename" : "icon_32x32@2x.png" },
+    { "idiom" : "mac", "scale" : "1x", "size" : "128x128", "filename" : "icon_128x128.png" },
+    { "idiom" : "mac", "scale" : "2x", "size" : "128x128", "filename" : "icon_128x128@2x.png" },
+    { "idiom" : "mac", "scale" : "1x", "size" : "256x256", "filename" : "icon_256x256.png" },
+    { "idiom" : "mac", "scale" : "2x", "size" : "256x256", "filename" : "icon_256x256@2x.png" },
+    { "idiom" : "mac", "scale" : "1x", "size" : "512x512", "filename" : "icon_512x512.png" },
+    { "idiom" : "mac", "scale" : "2x", "size" : "512x512", "filename" : "icon_512x512@2x.png" }
+  ],
+  "info" : { "author" : "xcode", "version" : 1 }
+}
+JSON
+  xcrun actool "${ICON_WORK}/Assets.xcassets" \
+    --compile "${ICON_WORK}/out" \
+    --platform macosx \
+    --minimum-deployment-target 14.0 \
+    --app-icon AppIcon \
+    --output-partial-info-plist "${ICON_WORK}/partial.plist" >/dev/null
+  if [[ -f "${ICON_WORK}/out/Assets.car" ]]; then
+    cp "${ICON_WORK}/out/Assets.car" "${RESOURCES_DIR}/Assets.car"
+    HAS_ASSET_CATALOG_ICON=1
+  else
+    echo "warning: actool produced no Assets.car; the icon may show as generic on macOS 26+." >&2
+  fi
+  rm -rf "${ICON_WORK}"
+else
+  echo "warning: actool not found (requires full Xcode); the icon may show as generic on macOS 26+." >&2
+fi
+
 APP_VERSION="${APP_VERSION:-0.1.0}"
 APP_BUILD="${APP_BUILD:-$(date +%Y%m%d%H%M)}"
 
@@ -134,6 +185,10 @@ cat > "${CONTENTS_DIR}/Info.plist" <<PLIST
 </dict>
 </plist>
 PLIST
+
+if [[ "${HAS_ASSET_CATALOG_ICON}" -eq 1 ]]; then
+  /usr/libexec/PlistBuddy -c "Add :CFBundleIconName string AppIcon" "${CONTENTS_DIR}/Info.plist"
+fi
 
 # ---------------------------------------------------------------------------
 # 3. Ad-hoc code sign so macOS is happy launching a local build

@@ -46,6 +46,8 @@ No server. No account. No telemetry. No third-party dependencies.
 - macOS 14 Sonoma or later
 - Xcode command-line tools
 - Swift 6 toolchain
+- Full Xcode (for `actool`) if you want the app icon in bundles built on
+  macOS 26 or later; without it the build still succeeds with a warning
 
 Install the command-line tools if needed:
 
