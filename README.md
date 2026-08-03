@@ -20,8 +20,9 @@ discard its state.
 No server. No account. No telemetry. No third-party dependencies.
 
 > [!NOTE]
-> Ledge is currently distributed as a source build. Signed release downloads
-> and an automatic updater are not available yet.
+> Ledge is currently distributed as source code. There is no pre-built,
+> signed download or automatic updater. Follow [Build and run](#build-and-run)
+> below to create a local app bundle on your Mac.
 
 ## Highlights
 
@@ -57,31 +58,62 @@ xcode-select --install
 
 ## Build and run
 
-Clone the repository, then run Ledge directly with Swift Package Manager:
+### 1. Clone the source
+
+Open Terminal and run:
 
 ```zsh
 git clone https://github.com/brucez001/ledge.git
 cd ledge
-swift run
 ```
 
-For a double-clickable local app bundle:
+### 2. Build and install the app
 
-```zsh
-Scripts/build-local-app.sh --open
-```
-
-The script builds, packages, and ad-hoc signs `build/Ledge.app`. To also replace
-the copy in `~/Applications`:
+The recommended command builds a release version, creates a local app bundle,
+installs it in `~/Applications`, and opens it:
 
 ```zsh
 Scripts/build-local-app.sh --install --open
 ```
 
-Launch at login and website camera/microphone permission prompts require the app
-bundle; they are not available when running through `swift run`. The command-line
-and app-bundle forms also use different `UserDefaults` domains, so favourites and
-settings do not automatically carry between them.
+The script:
+
+1. builds Ledge with Swift Package Manager in release mode;
+2. packages and ad-hoc signs `build/Ledge.app`;
+3. copies it to `~/Applications/Ledge.app`; and
+4. launches the installed copy.
+
+To rebuild after pulling a newer version, run the same command again. It safely
+replaces the existing copy in `~/Applications`.
+
+If you only want to build and open the app without installing it:
+
+```zsh
+Scripts/build-local-app.sh --open
+```
+
+The resulting bundle remains at `build/Ledge.app`.
+
+### Development run
+
+During development, Ledge can also run directly through Swift Package Manager:
+
+```zsh
+swift run
+```
+
+Use the app-bundle build for normal use. Launch at login and website
+camera/microphone permission prompts are unavailable through `swift run`.
+The command-line and app-bundle forms also use different `UserDefaults`
+domains, so favourites and settings do not carry between them automatically.
+
+### Verify the source
+
+To build and run the unit tests without launching the app:
+
+```zsh
+Scripts/dev-check.sh
+```
 
 ## Using Ledge
 
