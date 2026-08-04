@@ -277,8 +277,8 @@ struct BrowserToolbar: View {
         Button("Copy address") { session.copyCurrentURL() }
         Button("Open in default browser") { session.openInDefaultBrowser() }
 
-        if controller.canAddCurrentPageToSidebar {
-            Button("Add to Sidebar") { controller.addCurrentPageToSidebar() }
+        if controller.canAddCurrentPageToFavourites {
+            Button("Add to Favourites") { controller.addCurrentPageToFavourites() }
         }
 
         Divider()

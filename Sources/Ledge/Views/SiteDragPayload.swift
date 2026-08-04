@@ -1,6 +1,5 @@
 import Foundation
 import UniformTypeIdentifiers
-import SwiftUI
 
 /// The drag payload used to reorder saved sites.
 ///
@@ -17,7 +16,9 @@ enum SiteDragPayload {
     enum Item: Equatable {
         /// A saved site being reordered.
         case site(UUID)
-        /// A transient tab being dragged into the saved sites to pin it.
+        /// A transient tab being moved. Dropping it anywhere in the rail only
+        /// ever repositions it -- including above the saved sites, where it stays
+        /// a tab. Keeping it is the explicit "Add to Favourites".
         case tab(UUID)
     }
 
@@ -53,18 +54,4 @@ enum SiteDragPayload {
 struct SiteDropInsertion: Equatable {
     let targetID: UUID
     let isBelow: Bool
-}
-
-extension View {
-    /// Attaches `.onDrag` only when `condition` holds. An empty tab has nothing
-    /// to pin, so it should not offer a drag at all rather than starting one
-    /// that can never be dropped anywhere useful.
-    @ViewBuilder
-    func onDrag(if condition: Bool, payload: @escaping () -> NSItemProvider) -> some View {
-        if condition {
-            onDrag(payload)
-        } else {
-            self
-        }
-    }
 }

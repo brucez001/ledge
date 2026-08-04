@@ -1,4 +1,3 @@
-import AppKit
 import SwiftUI
 import UniformTypeIdentifiers
 
@@ -59,59 +58,18 @@ struct FavouriteTile: View {
             return true
         }
         .contextMenu {
-            Button("Open") { controller.openFavourite(item) }
-            if hasSession {
-                Button("Reload") { sessionManager.session(forFavourite: item).reload() }
-            }
-
-            Divider()
-
-            Button(item.resolvedUserAgentMode.toggled.title) {
-                controller.setUserAgentMode(item.resolvedUserAgentMode.toggled, for: item)
-            }
-            Toggle(
-                "Reload when shown",
-                isOn: Binding(
-                    get: { item.resolvedReloadsOnFocus },
-                    set: { controller.setReloadsOnFocus($0, for: item) }
-                )
-            )
-
-            Divider()
-
-            Button("Copy address") { copyAddress() }
-
-            if hasSession {
-                Button("Close live session") {
-                    sessionManager.closeSession(kind: .favourite(item.id))
-                }
-            }
-
-            Divider()
-
-            // Deliberately below a divider and separated from every other
-            // action -- a destructive item accidentally hit from muscle
-            // memory (e.g. "Reload") is the single worst outcome here.
-            Button("Remove favourite…", role: .destructive) {
+            FavouriteMenuItems(
+                controller: controller,
+                item: item,
+                hasSession: hasSession
+            ) {
                 isConfirmingRemoval = true
             }
         }
-        .confirmationDialog(
-            "Remove \"\(item.name)\"?",
-            isPresented: $isConfirmingRemoval,
-            titleVisibility: .visible
-        ) {
-            Button("Remove", role: .destructive) { controller.removeFavourite(item) }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("Its live session, if any, will be closed too. This can't be undone.")
+        .confirmFavouriteRemoval(item, isPresented: $isConfirmingRemoval) {
+            controller.removeFavourite(item)
         }
         .accessibilityLabel("Open \(item.name)")
-    }
-
-    private func copyAddress() {
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(item.url.absoluteString, forType: .string)
     }
 }
 

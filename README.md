@@ -166,7 +166,19 @@ and optionally reload whenever they are shown.
 
 Transient tabs are intentionally temporary and are not restored on the next
 launch. An empty transient tab is reused rather than allowing stacks of blank
-tabs, and it can be pinned into a saved site once it has navigated somewhere.
+tabs, and it can be added to your favourites once it has navigated somewhere.
+
+Right-clicking a tab in the rail offers the same actions a saved site does,
+wherever they make sense for something temporary: reload, desktop or mobile
+user agent, reload when shown, copy address, open in the default browser, and
+reordering.
+
+A gap separates the saved sites from the tabs in the rail, and it divides what
+dragging means. Dragged among the tabs, a tab is reordered. Dragged up across
+the gap onto the saved sites, it is kept as a favourite at exactly that
+position — the page carries on in the same web view rather than reloading.
+**Add to Favourites** in the tab's menu does the same thing, adding it to the
+end of the list.
 
 The omnibox recognises normal URLs, ports, IP addresses, `localhost`, and local
 files. Other input is sent to the configured search engine: Google,

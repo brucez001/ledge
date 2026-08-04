@@ -189,8 +189,8 @@ final class FavouritesStore: ObservableObject {
     }
 
     /// Moves one favourite directly before another. This is used by the
-    /// compact sidebar, whose icons support drag-to-reorder without showing
-    /// a full List edit control.
+    /// compact rail, whose icons support drag-to-reorder without showing a
+    /// full List edit control.
     func move(id: Favourite.ID, before targetID: Favourite.ID) {
         guard id != targetID,
               let sourceIndex = items.firstIndex(where: { $0.id == id }) else { return }
@@ -214,6 +214,26 @@ final class FavouritesStore: ObservableObject {
               sourceIndex != items.count - 1 else { return }
         let movedItem = items.remove(at: sourceIndex)
         items.append(movedItem)
+        persist()
+    }
+
+    /// Rewrites the order to match `ids`, which is how the rail applies a move
+    /// made in its unified list. Ids that are not present are ignored, and any
+    /// favourite `ids` omits keeps its relative position at the end, so a stale
+    /// list can never drop a saved site.
+    func setOrder(_ ids: [Favourite.ID]) {
+        var remaining = items
+        var reordered: [Favourite] = []
+        reordered.reserveCapacity(items.count)
+
+        for id in ids {
+            guard let index = remaining.firstIndex(where: { $0.id == id }) else { continue }
+            reordered.append(remaining.remove(at: index))
+        }
+        reordered += remaining
+
+        guard reordered.map(\.id) != items.map(\.id) else { return }
+        items = reordered
         persist()
     }
 

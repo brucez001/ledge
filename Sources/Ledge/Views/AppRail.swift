@@ -34,8 +34,10 @@ struct AppRail: View {
             : "Panel stays open (auto-hide is off)"
     }
 
-    private var tabIDs: [UUID] {
-        sessionManager.tabSessions.compactMap(\.id.tabID)
+    /// Saved sites and transient tabs in one order, so either can be moved
+    /// anywhere among the other.
+    private var entries: [RailEntry] {
+        controller.railEntries
     }
 
     /// The only place that moves the panel, now that dragging the background
@@ -66,11 +68,11 @@ struct AppRail: View {
                 action: controller.goHome
             )
 
-            Divider().padding(.horizontal, 10)
+            Divider().padding(.horizontal, 7)
 
             sites
 
-            Divider().padding(.horizontal, 10)
+            Divider().padding(.horizontal, 7)
 
             RailIconButton(
                 systemName: pinSymbol,
@@ -98,44 +100,66 @@ struct AppRail: View {
 
     /// The site list scrolls, so a long list never squeezes out the controls
     /// pinned above and below it.
+    ///
+    /// Saved sites and tabs share one list and one reordering rule. They used to
+    /// be two consecutive stretches, which made a tab's position unexpressible:
+    /// order came from the persisted favourites array for one and from session
+    /// creation order for the other, so the only way to move a tab up among the
+    /// saved sites was to convert it into one.
     private var sites: some View {
         ScrollView(.vertical) {
-            VStack(spacing: 4) {
-                ForEach(favourites.items) { item in
-                    RailSiteButton(
-                        controller: controller,
-                        item: item,
-                        isActive: controller.destination == .favourite(item.id),
-                        hasSession: sessionManager.hasSession(forFavouriteID: item.id)
-                    )
+            // Spacing lives inside each row (as padding it can claim for its
+            // drop target) rather than between them, so the 4pt seams are no
+            // longer dead zones that swallow a drop.
+            VStack(spacing: 0) {
+                ForEach(entries) { entry in
+                    row(for: entry)
                 }
 
-                // Transient tabs follow the saved sites. Deliberately *not*
-                // separated by a rule: with a rail full of similar icons an
-                // extra full-width line reads as arbitrary clutter rather than
-                // as grouping. Position plus the close button on hover is
-                // enough to tell a tab from a saved site.
-                ForEach(tabIDs, id: \.self) { id in
-                    RailTabButton(
-                        controller: controller,
-                        tabID: id,
-                        isActive: controller.destination == .tab(id),
-                        isBlank: controller.blankTabIDs.contains(id)
-                    )
-                }
-
+                // A control rather than a row, so it sits slightly apart and is
+                // not a drop target.
                 RailIconButton(
                     systemName: "plus",
                     label: "New tab",
                     tooltip: "New tab (⌘T)",
                     action: { controller.newTab() }
                 )
+                .padding(.top, entries.isEmpty ? 0 : 6)
             }
         }
         .scrollIndicators(.hidden)
         // Takes the space left between the fixed controls above and below, so
         // a long list scrolls instead of pushing them off the rail.
         .frame(maxHeight: .infinity, alignment: .top)
+    }
+
+    @ViewBuilder
+    private func row(for entry: RailEntry) -> some View {
+        let canMoveUp = entries.first != entry
+        let canMoveDown = entries.last != entry
+
+        switch entry {
+        case .favourite(let id):
+            if let item = favourites.items.first(where: { $0.id == id }) {
+                RailSiteButton(
+                    controller: controller,
+                    item: item,
+                    isActive: controller.destination == .favourite(id),
+                    hasSession: sessionManager.hasSession(forFavouriteID: id),
+                    canMoveUp: canMoveUp,
+                    canMoveDown: canMoveDown
+                )
+            }
+        case .tab(let id):
+            RailTabButton(
+                controller: controller,
+                tabID: id,
+                isActive: controller.destination == .tab(id),
+                isBlank: controller.blankTabIDs.contains(id),
+                canMoveUp: canMoveUp,
+                canMoveDown: canMoveDown
+            )
+        }
     }
 
     private var optionsMenu: some View {
@@ -186,7 +210,7 @@ struct AppRail: View {
                 // used to be a heavier, differently sized glyph.
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(Theme.inkSecondary)
-                .frame(width: 30, height: 28)
+                .frame(width: Theme.Metrics.railItemSize, height: 28)
                 .background(
                     RoundedRectangle(cornerRadius: Theme.Metrics.controlCornerRadius, style: .continuous)
                         .fill(isHoveringOptions ? Theme.controlHover : .clear)
@@ -195,8 +219,8 @@ struct AppRail: View {
         }
         .menuStyle(.borderlessButton)
         // Without this, `.borderlessButton` still draws a disclosure chevron
-        // beside the label -- it renders as "···⌄", which crowds a 56pt rail
-        // and pushes the glyph off centre.
+        // beside the label -- it renders as "···⌄", which crowds a rail this
+        // narrow and pushes the glyph off centre.
         .menuIndicator(.hidden)
         .fixedSize()
         .onHover { isHoveringOptions = $0 }
@@ -214,14 +238,16 @@ struct AppRail: View {
 /// "before this row", which gave no way to move a site to the very end.
 ///
 /// The drop position is deliberately *not* drawn as an accent line: a 2pt rule
-/// under a 36pt icon in a narrow rail reads as a stray artefact rather than as
-/// feedback, and any drag that ends without a `dropExited` strands it on
-/// screen. The rail now shows no such marker in any state.
+/// under a rail-sized icon reads as a stray artefact rather than as feedback,
+/// and any drag that ends without a `dropExited` strands it on screen. The rail
+/// now shows no such marker in any state.
 private struct RailSiteButton: View {
     @ObservedObject var controller: PanelController
     let item: Favourite
     let isActive: Bool
     let hasSession: Bool
+    let canMoveUp: Bool
+    let canMoveDown: Bool
 
     @State private var isHovering = false
     @State private var isConfirmingRemoval = false
@@ -230,10 +256,10 @@ private struct RailSiteButton: View {
         Button {
             controller.openFavourite(item)
         } label: {
-            FaviconView(host: item.host, size: 26)
-                .frame(width: 26, height: 26)
+            FaviconView(host: item.host, size: Theme.Metrics.railIconSize)
+                .frame(width: Theme.Metrics.railIconSize, height: Theme.Metrics.railIconSize)
                 .padding(4)
-                .frame(width: 36, height: 36)
+                .frame(width: Theme.Metrics.railItemSize, height: Theme.Metrics.railItemSize)
                 .contentShape(Rectangle())
         }
         .buttonStyle(RailButtonBackgroundStyle(isHovering: isHovering, isSelected: isActive))
@@ -243,83 +269,56 @@ private struct RailSiteButton: View {
         .onDrag {
             NSItemProvider(object: SiteDragPayload.encode(item.id) as NSString)
         }
+        .padding(.vertical, Theme.Metrics.railRowSpacing / 2)
         .onDrop(
             of: [SiteDragPayload.type],
-            delegate: SiteReorderDropDelegate(
-                target: item,
+            delegate: RailReorderDropDelegate(
+                target: .favourite(item.id),
                 controller: controller,
-                rowHeight: 36
+                rowHeight: Theme.Metrics.railRowHeight
             )
         )
         .contextMenu {
-            Button("Open") { controller.openFavourite(item) }
-            if hasSession {
-                Button("Reload") { controller.sessionManager.session(forFavourite: item).reload() }
-            }
-
-            Divider()
-
-            Button(item.resolvedUserAgentMode.toggled.title) {
-                controller.setUserAgentMode(item.resolvedUserAgentMode.toggled, for: item)
-            }
-            Toggle(
-                "Reload when shown",
-                isOn: Binding(
-                    get: { item.resolvedReloadsOnFocus },
-                    set: { controller.setReloadsOnFocus($0, for: item) }
+            // Menu reordering as well as dragging: a small target in a narrow
+            // rail is a fiddly thing to hit precisely. Moves span the whole
+            // rail, so a saved site steps over an interleaved tab as readily as
+            // over another saved site.
+            FavouriteMenuItems(
+                controller: controller,
+                item: item,
+                hasSession: hasSession,
+                reordering: RailReordering(
+                    entry: .favourite(item.id),
+                    controller: controller,
+                    canMoveUp: canMoveUp,
+                    canMoveDown: canMoveDown
                 )
-            )
-            Button("Copy address") {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(item.address, forType: .string)
-            }
-
-            Divider()
-
-            // Keyboard/menu reordering as well as dragging: a 36pt target in a
-            // narrow rail is a fiddly thing to hit precisely.
-            Button("Move Up") { controller.favourites.moveUp(id: item.id) }
-                .disabled(controller.favourites.items.first?.id == item.id)
-            Button("Move Down") { controller.favourites.moveDown(id: item.id) }
-                .disabled(controller.favourites.items.last?.id == item.id)
-
-            if hasSession {
-                Divider()
-                Button("Close live session") {
-                    controller.sessionManager.closeSession(kind: .favourite(item.id))
-                }
-            }
-
-            Divider()
-
-            Button("Remove from sidebar…", role: .destructive) {
+            ) {
                 isConfirmingRemoval = true
             }
         }
-        .confirmationDialog(
-            "Remove \(item.name)?",
-            isPresented: $isConfirmingRemoval,
-            titleVisibility: .visible
-        ) {
-            Button("Remove", role: .destructive) { controller.removeFavourite(item) }
-            Button("Cancel", role: .cancel) {}
-        } message: {
-            Text("This also closes its live session. Signed-in cookies are kept.")
+        .confirmFavouriteRemoval(item, isPresented: $isConfirmingRemoval) {
+            controller.removeFavourite(item)
         }
     }
 }
 
-/// Turns a drop on a rail row into an insert-above or insert-below.
+/// Turns a drop on any rail row into an insert-above or insert-below.
 ///
-/// It accepts two kinds of payload: a saved site being reordered, and a
-/// transient tab being dragged into the saved sites to pin it at that exact
-/// position.
-private struct SiteReorderDropDelegate: DropDelegate {
-    let target: Favourite
+/// One delegate for both kinds of row, because the rail is one list: a saved
+/// site and a tab reorder by the same rule, and a drag never converts one into
+/// the other. Keeping a tab is only ever the explicit "Add to Favourites" --
+/// position and persistence are separate concerns, and a gesture aimed at the
+/// first must not quietly perform the second.
+///
+/// A `DropDelegate` rather than a plain `.onDrop` so the drop *location* is
+/// available: the upper half of a row means "insert above", the lower half
+/// "insert below". Without that a drop could only ever mean "before this row",
+/// leaving no way to reach the end of the rail.
+private struct RailReorderDropDelegate: DropDelegate {
+    let target: RailEntry
     let controller: PanelController
     let rowHeight: CGFloat
-
-    private var favourites: FavouritesStore { controller.favourites }
 
     func validateDrop(info: DropInfo) -> Bool {
         info.hasItemsConforming(to: [SiteDragPayload.type])
@@ -330,56 +329,81 @@ private struct SiteReorderDropDelegate: DropDelegate {
     }
 
     func performDrop(info: DropInfo) -> Bool {
-        let placement = proposedInsertion(for: info)
+        let isBelow = info.location.y > rowHeight / 2
 
         guard let provider = info.itemProviders(for: [SiteDragPayload.type]).first else { return false }
         provider.loadObject(ofClass: NSString.self) { reading, _ in
             guard let string = reading as? String,
                   let item = SiteDragPayload.decodeItem(string) else { return }
+            let dragged: RailEntry = switch item {
+            case .site(let id): .favourite(id)
+            case .tab(let id): .tab(id)
+            }
             Task { @MainActor in
-                switch item {
-                case .site(let id):
-                    if placement.isBelow {
-                        favourites.move(id: id, after: placement.targetID)
-                    } else {
-                        favourites.move(id: id, before: placement.targetID)
-                    }
-                case .tab(let id):
-                    // Dropping a tab among the saved sites pins it, keeping its
-                    // live page, at the position it was dropped.
-                    controller.pinTab(id, placement: placement)
-                }
+                controller.moveRailEntry(dragged, relativeTo: target, isBelow: isBelow)
             }
         }
         return true
-    }
-
-    private func proposedInsertion(for info: DropInfo) -> SiteDropInsertion {
-        SiteDropInsertion(targetID: target.id, isBelow: info.location.y > rowHeight / 2)
     }
 }
 
 /// One transient tab in the rail. It shows a placeholder glyph until the tab
 /// has been navigated somewhere, then the site's own icon.
+///
+/// Its context menu deliberately mirrors the saved-site menu wherever the
+/// action means the same thing for a tab. A tab used to offer nothing but
+/// "Close Tab", which made the rail feel as though right-clicking only worked
+/// on some of its icons; everything a live session can do (reload, user agent,
+/// reload-on-focus, address, reordering) applies equally to a tab. Only the two
+/// items that genuinely have no meaning are absent: "Close live session" would
+/// duplicate "Close Tab" (closing a tab *is* closing its session), and there is
+/// no saved entry to remove -- its counterpart is "Add to Favourites".
 private struct RailTabButton: View {
     @ObservedObject var controller: PanelController
     let tabID: UUID
     let isActive: Bool
     let isBlank: Bool
+    let canMoveUp: Bool
+    let canMoveDown: Bool
+
+    /// The row needs the session *observed*, not merely fetched: watching
+    /// `SessionManager.sessions` does not forward a `WebSession`'s own
+    /// `objectWillChange`, so the icon, tooltip, and menu text went stale as a
+    /// tab navigated. A tab always has a session -- it is only listed because one
+    /// exists -- so the empty branch is unreachable in practice.
+    var body: some View {
+        if let session = controller.sessionManager.existingSession(for: .tab(tabID)) {
+            RailTabRow(
+                controller: controller,
+                session: session,
+                tabID: tabID,
+                isActive: isActive,
+                isBlank: isBlank,
+                canMoveUp: canMoveUp,
+                canMoveDown: canMoveDown
+            )
+        }
+    }
+}
+
+private struct RailTabRow: View {
+    @ObservedObject var controller: PanelController
+    @ObservedObject var session: WebSession
+    let tabID: UUID
+    let isActive: Bool
+    let isBlank: Bool
+    let canMoveUp: Bool
+    let canMoveDown: Bool
 
     @State private var isHovering = false
 
-    private var session: WebSession? {
-        controller.sessionManager.existingSession(for: .tab(tabID))
-    }
-
     private var host: String {
-        session?.displayHost ?? ""
+        session.displayHost
     }
 
     private var tooltip: String {
         if isBlank { return "New tab" }
-        let title = session?.pageTitle ?? ""
+        let title = session.pageTitle
         return title.isEmpty ? (host.isEmpty ? "Tab" : host) : title
     }
 
@@ -393,11 +417,11 @@ private struct RailTabButton: View {
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(Theme.inkTertiary)
                 } else {
-                    FaviconView(host: host, size: 26)
-                        .frame(width: 26, height: 26)
+                    FaviconView(host: host, size: Theme.Metrics.railIconSize)
+                        .frame(width: Theme.Metrics.railIconSize, height: Theme.Metrics.railIconSize)
                 }
             }
-            .frame(width: 36, height: 36)
+            .frame(width: Theme.Metrics.railItemSize, height: Theme.Metrics.railItemSize)
             .contentShape(Rectangle())
         }
         .buttonStyle(RailButtonBackgroundStyle(isHovering: isHovering, isSelected: isActive))
@@ -422,17 +446,69 @@ private struct RailTabButton: View {
         .onHover { isHovering = $0 }
         .help(tooltip)
         .accessibilityLabel(isBlank ? "New tab" : "Tab: \(tooltip)")
-        // Draggable so a tab can be dropped among the saved sites to pin it
-        // there. An empty tab has nothing to pin, so it is not offered.
-        .onDrag(
-            if: !isBlank,
-            payload: { NSItemProvider(object: SiteDragPayload.encodeTab(tabID) as NSString) }
+        // A tab drag only ever moves the tab. It never converts it: keeping a
+        // site is the explicit "Add to Favourites", so a gesture aimed at
+        // position cannot quietly change what the icon is.
+        .onDrag {
+            NSItemProvider(object: SiteDragPayload.encodeTab(tabID) as NSString)
+        }
+        .padding(.vertical, Theme.Metrics.railRowSpacing / 2)
+        .onDrop(
+            of: [SiteDragPayload.type],
+            delegate: RailReorderDropDelegate(
+                target: .tab(tabID),
+                controller: controller,
+                rowHeight: Theme.Metrics.railRowHeight
+            )
         )
         .contextMenu {
-            if controller.canAddCurrentPageToSidebar, isActive {
-                Button("Add to Sidebar") { controller.addCurrentPageToSidebar() }
-                Divider()
+            Button("Open") { controller.openTab(tabID) }
+
+            Button("Reload") { session.reload() }
+
+            Divider()
+
+            Button(session.userAgentMode.toggled.title) {
+                session.setUserAgentMode(session.userAgentMode.toggled)
             }
+            // Not persisted, unlike a saved site's copy of this setting: a tab
+            // is gone at the next launch, so there is nowhere to keep it and
+            // nothing to migrate.
+            Toggle(
+                "Reload when shown",
+                isOn: Binding(
+                    get: { session.reloadsOnFocus },
+                    set: { session.reloadsOnFocus = $0 }
+                )
+            )
+            Button("Copy address") { session.copyCurrentURL() }
+                .disabled(session.currentURL == nil)
+            Button("Open in default browser") { session.openInDefaultBrowser() }
+                .disabled(session.currentURL == nil)
+
+            // Moves span the whole rail: a tab can step above the saved sites
+            // and stay a tab. Omitted only when the rail has a single row, where
+            // the pair could never do anything.
+            if canMoveUp || canMoveDown {
+                Divider()
+
+                Button("Move Up") { controller.moveRailEntry(.tab(tabID), by: -1) }
+                    .disabled(!canMoveUp)
+                Button("Move Down") { controller.moveRailEntry(.tab(tabID), by: 1) }
+                    .disabled(!canMoveDown)
+            }
+
+            // Offered for any tab with somewhere to go, not just the visible
+            // one: `pinTab` works on a tab by id, and asking about the *active*
+            // session answered the wrong question when the menu belonged to a
+            // tab in the background.
+            if controller.canPinTab(tabID) {
+                Divider()
+                Button("Add to Favourites") { controller.pinTab(tabID) }
+            }
+
+            Divider()
+
             Button("Close Tab") { controller.closeTab(tabID) }
         }
     }
@@ -455,7 +531,7 @@ private struct RailIconButton: View {
             Image(systemName: systemName)
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(isOn ? Color.accentColor : Theme.inkSecondary)
-                .frame(width: 30, height: 28)
+                .frame(width: Theme.Metrics.railItemSize, height: 28)
                 .contentShape(Rectangle())
         }
         .buttonStyle(RailButtonBackgroundStyle(isHovering: isHovering, isSelected: isOn))

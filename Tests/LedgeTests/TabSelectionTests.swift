@@ -26,6 +26,17 @@ final class TabSelectionTests: XCTestCase {
         XCTAssertNil(TabSelection.successor(after: UUID(), in: [a, b]))
     }
 
+    /// Successor selection is fed the *rail* order, so the tab that takes over is
+    /// the neighbour the user can see. Feeding it session-creation order picked a
+    /// non-adjacent tab once the rail interleaved tabs with saved sites.
+    func testSuccessorFollowsRailOrderRatherThanCreationOrder() {
+        let site = UUID()
+        let railOrder = RailLayout.tabs(in: [.tab(c), .favourite(site), .tab(a), .tab(b)])
+
+        XCTAssertEqual(railOrder, [c, a, b])
+        XCTAssertEqual(TabSelection.successor(after: c, in: railOrder), a)
+    }
+
     func testEmptyListSelectsNothing() {
         XCTAssertNil(TabSelection.successor(after: a, in: []))
     }

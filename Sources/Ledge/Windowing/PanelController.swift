@@ -84,6 +84,11 @@ final class PanelController: NSObject, ObservableObject {
     /// and the session *manager*, not every individual session.
     @Published private(set) var blankTabIDs: Set<UUID> = []
 
+    /// Where each transient tab sits in the rail, relative to the saved sites.
+    /// In-memory only: tabs are not restored across launches, so neither is
+    /// their placement.
+    @Published private(set) var tabAnchors: [UUID: RailAnchor] = [:]
+
     let sessionManager = SessionManager()
     let favourites = FavouritesStore()
     let preferences = Preferences.shared
@@ -219,6 +224,7 @@ final class PanelController: NSObject, ObservableObject {
         // changes so this does not depend on Combine's initial-value timing.
         FaviconStore.shared.source = preferences.faviconSource
         observePreferences()
+        observeFavouriteOrder()
     }
 
     deinit {
@@ -237,6 +243,25 @@ final class PanelController: NSObject, ObservableObject {
     }
 
     // MARK: - Preferences wiring
+
+    /// Keeps the live tab order in step with the rail whenever the favourites
+    /// are reordered somewhere that does not go through `applyRailOrder` -- the
+    /// home grid's tile drags, the favourites manager's list, and adding or
+    /// removing a site. Tabs follow their anchors, so their display order can
+    /// change without the session list being touched.
+    ///
+    /// Safe against feedback: the handler only writes the tab order, never the
+    /// favourites, so it cannot retrigger itself.
+    private func observeFavouriteOrder() {
+        favourites.$items
+            .dropFirst()
+            .sink { [weak self] _ in
+                // After the store has published, so `railEntries` sees the new
+                // favourite order rather than the previous one.
+                Task { @MainActor in self?.syncTabOrder() }
+            }
+            .store(in: &cancellables)
+    }
 
     /// Reacts to user-facing preference changes. Each property is observed
     /// individually (rather than a single `objectWillChange` sink) so each
@@ -803,12 +828,17 @@ final class PanelController: NSObject, ObservableObject {
     /// Closes a transient tab. Selecting what to show next mirrors a browser:
     /// the neighbouring tab if there is one, otherwise the start page.
     func closeTab(_ id: UUID) {
-        let tabs = sessionManager.tabSessions.compactMap(\.id.tabID)
+        // Rail order, not session-creation order: the neighbour the user sees is
+        // the one that should take over.
+        let tabs = RailLayout.tabs(in: railEntries)
         let wasActive = activeTabID == id
         let successor = TabSelection.successor(after: id, in: tabs)
 
         sessionManager.closeSession(kind: .tab(id))
         blankTabIDs.remove(id)
+        // Its placement dies with it; a stale anchor would otherwise accumulate
+        // for every tab ever opened.
+        tabAnchors.removeValue(forKey: id)
 
         guard wasActive else { return }
         if let successor {
@@ -834,8 +864,15 @@ final class PanelController: NSObject, ObservableObject {
     }
 
     func removeFavourite(_ favourite: Favourite) {
+        // Re-home any tab anchored to this site onto the row above it, so an
+        // interleaved tab stays where it is instead of dropping to the end of
+        // the rail when its anchor disappears.
+        let remaining = RailLayout.removing(.favourite(favourite.id), from: railEntries)
+
         favourites.remove(favourite)
         sessionManager.closeSession(kind: .favourite(favourite.id))
+        tabAnchors = RailLayout.anchors(in: remaining)
+
         if destination == .favourite(favourite.id) {
             goHome()
         }
@@ -903,6 +940,8 @@ final class PanelController: NSObject, ObservableObject {
     /// active-session cleanup has nothing stale left to reference.
     func closeAllSessions() {
         sessionManager.closeAllSessions()
+        // Every tab went with them, so no placement is left to remember.
+        tabAnchors.removeAll()
         goHome()
     }
 
@@ -924,13 +963,13 @@ final class PanelController: NSObject, ObservableObject {
     }
 
     /// Promotes the page in the transient "browse" session into a permanent
-    /// item in the sidebar, the way a browser's bookmark button works.
+    /// favourite, the way a browser's bookmark button works.
     ///
     /// This is the other half of "open a new site": you type an address, look
     /// at it, and only then decide to keep it. Without this the only way to
     /// add a site was to type its address a second time into a dialog.
     @discardableResult
-    func addCurrentPageToSidebar() -> Favourite? {
+    func addCurrentPageToFavourites() -> Favourite? {
         guard let session = sessionManager.activeSession(),
               let tabID = session.id.tabID else {
             // Not a tab: there is nothing to move, so just save and open it.
@@ -946,25 +985,22 @@ final class PanelController: NSObject, ObservableObject {
 
     /// Turns a transient tab into a saved site, keeping its live page.
     ///
-    /// `placement` positions the new item in the sidebar, which is what lets a
-    /// tab be dragged to an exact spot among the saved sites rather than always
-    /// landing at the end.
+    /// The new favourite takes the tab's own place in the rail rather than
+    /// jumping to the end: keeping a site should change what it *is*, not where
+    /// it sits. Position and persistence are separate concerns, and a drag never
+    /// triggers this -- only the explicit "Add to Favourites".
     @discardableResult
-    func pinTab(_ tabID: UUID, placement: SiteDropInsertion? = nil) -> Favourite? {
+    func pinTab(_ tabID: UUID) -> Favourite? {
         guard let session = sessionManager.existingSession(for: .tab(tabID)),
               let url = session.currentURL,
               url.host != nil else { return nil }
 
+        // Captured before anything changes: the row the tab occupies is the row
+        // the favourite must end up in. Keeping only its anchor would lose its
+        // position relative to other tabs sharing that anchor.
+        let entries = railEntries
         let derived = Favourite.preferredName(pageTitle: session.pageTitle, host: session.displayHost)
         let added = favourites.add(name: favourites.uniqueName(derived), address: url.absoluteString)
-
-        if let placement {
-            if placement.isBelow {
-                favourites.move(id: added.id, after: placement.targetID)
-            } else {
-                favourites.move(id: added.id, before: placement.targetID)
-            }
-        }
 
         // The tab *becomes* the saved site: the same live web view carries on
         // under the new identity, so the page stays exactly as it was instead
@@ -973,19 +1009,92 @@ final class PanelController: NSObject, ObservableObject {
         session.iconHost = added.host
         session.reloadsOnFocus = added.resolvedReloadsOnFocus
         blankTabIDs.remove(tabID)
+        tabAnchors.removeValue(forKey: tabID)
+
+        // `add` appended, so put the row back where the tab stood.
+        applyRailOrder(
+            RailLayout.replacing(.tab(tabID), with: .favourite(added.id), in: entries)
+        )
+
         destination = .favourite(added.id)
         UserDefaults.standard.set(added.id.uuidString, forKey: activeFavouriteKey)
         return added
     }
 
-    /// Whether the current page is a candidate for `addCurrentPageToSidebar`.
-    var canAddCurrentPageToSidebar: Bool {
+    /// Whether the current page is a candidate for `addCurrentPageToFavourites`.
+    var canAddCurrentPageToFavourites: Bool {
         guard activeFavourite == nil,
               let url = sessionManager.activeSession()?.currentURL,
               let host = url.host else { return false }
         // Already saved under the same host: offering to add it again would
         // just produce a duplicate rail icon.
         return !favourites.items.contains { $0.url.host == host }
+    }
+
+    /// Whether a *specific* tab can be saved as a favourite. The rail offers
+    /// this per tab, including tabs that are not the visible one, so it cannot
+    /// go through `canAddCurrentPageToFavourites` (which asks about the active
+    /// session).
+    func canPinTab(_ tabID: UUID) -> Bool {
+        guard let session = sessionManager.existingSession(for: .tab(tabID)),
+              let host = session.currentURL?.host else { return false }
+        return !favourites.items.contains { $0.url.host == host }
+    }
+
+    // MARK: - Rail order
+
+    /// The rail's rows in display order: saved sites and transient tabs in one
+    /// list, so either kind can be moved anywhere among the other.
+    var railEntries: [RailEntry] {
+        RailLayout.entries(
+            favourites: favourites.items.map(\.id),
+            tabs: sessionManager.tabOrder,
+            anchors: tabAnchors
+        )
+    }
+
+    /// Moves a row by drop position: the upper half of the row under the pointer
+    /// means "above it", the lower half "below it".
+    func moveRailEntry(_ entry: RailEntry, relativeTo target: RailEntry, isBelow: Bool) {
+        let entries = railEntries
+        guard let reordered = RailLayout.moved(
+            entry,
+            relativeTo: target,
+            isBelow: isBelow,
+            in: entries
+        ) else { return }
+        applyRailOrder(reordered)
+    }
+
+    /// Moves a row by whole positions, for the menu's Move Up and Move Down.
+    func moveRailEntry(_ entry: RailEntry, by offset: Int) {
+        guard let reordered = RailLayout.moved(entry, by: offset, in: railEntries) else { return }
+        applyRailOrder(reordered)
+    }
+
+    /// Projects a reordered rail back onto its two sources: the persisted
+    /// favourite order, the in-memory tab order, and the tabs' anchors.
+    private func applyRailOrder(_ entries: [RailEntry]) {
+        // Validate before mutating anything: a rail derived from a stale
+        // snapshot must be rejected whole rather than applied to one store and
+        // not the others.
+        let tabs = RailLayout.tabs(in: entries)
+        guard Set(tabs) == Set(sessionManager.tabOrder) else { return }
+
+        favourites.setOrder(RailLayout.favourites(in: entries))
+        sessionManager.setTabOrder(tabs)
+        tabAnchors = RailLayout.anchors(in: entries)
+    }
+
+    /// Re-projects the tab order after the favourites were reordered elsewhere.
+    ///
+    /// The home grid and the favourites manager reorder saved sites directly, and
+    /// tabs follow their anchors, so the rail can end up displaying tabs in an
+    /// order the session list no longer matches. That stale order fed tab
+    /// successor selection when closing a tab, and could reshuffle tabs when two
+    /// anchor groups later merged.
+    private func syncTabOrder() {
+        sessionManager.setTabOrder(RailLayout.tabs(in: railEntries))
     }
 
     // MARK: - Geometry

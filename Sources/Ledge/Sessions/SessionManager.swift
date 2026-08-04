@@ -50,9 +50,41 @@ final class SessionManager: ObservableObject {
         sessions.filter { $0.id.tabID != nil }
     }
 
+    /// The live tab order, which the rail projects its unified list onto.
+    /// In-memory only, matching the fact that tabs are not restored across
+    /// launches.
+    var tabOrder: [UUID] {
+        sessions.compactMap(\.id.tabID)
+    }
+
+    /// Rewrites the tab slots of `sessions` in the given order, leaving the
+    /// saved-site sessions where they are.
+    func setTabOrder(_ order: [UUID]) {
+        let current = tabOrder
+        let reordered = order.filter { sessionsByKind[.tab($0)] != nil }
+        // A permutation, not merely the same length: a repeated id would
+        // otherwise install one session twice and drop another from `sessions`
+        // while leaving it live in `sessionsByKind`.
+        guard Set(reordered) == Set(current), reordered.count == current.count else { return }
+        guard reordered != current else { return }
+
+        var next = reordered.makeIterator()
+        var result: [WebSession] = []
+        result.reserveCapacity(sessions.count)
+        for session in sessions {
+            guard session.id.tabID != nil else {
+                result.append(session)
+                continue
+            }
+            guard let tabID = next.next(), let tab = sessionsByKind[.tab(tabID)] else { return }
+            result.append(tab)
+        }
+        sessions = result
+    }
+
     /// Re-files a live session under a new identity, keeping its web view.
     ///
-    /// This is what makes "add this tab to the sidebar" a *move* rather than a
+    /// This is what makes "add this tab to the favourites" a *move* rather than a
     /// copy: the tab you are looking at becomes the saved site, with the page,
     /// its scroll position, and any form state intact. Creating a fresh
     /// session for the new favourite and closing the tab would reload

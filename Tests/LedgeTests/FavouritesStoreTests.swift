@@ -159,6 +159,59 @@ final class FavouritesStoreTests: XCTestCase {
         XCTAssertEqual(store.items.map(\.name), ["A", "B"])
     }
 
+    // MARK: - Applying an order from the rail
+
+    func testSetOrderRewritesTheOrder() {
+        let store = makeStore()
+        let a = store.add(name: "A", address: "https://a.example")
+        let b = store.add(name: "B", address: "https://b.example")
+        let c = store.add(name: "C", address: "https://c.example")
+
+        store.setOrder([c.id, a.id, b.id])
+        XCTAssertEqual(store.items.map(\.name), ["C", "A", "B"])
+    }
+
+    /// The rail derives its order from a snapshot, so it can hand back a list
+    /// that has fallen behind. A favourite the list omits must keep its place
+    /// rather than disappearing.
+    func testSetOrderKeepsFavouritesTheListOmits() {
+        let store = makeStore()
+        let a = store.add(name: "A", address: "https://a.example")
+        let b = store.add(name: "B", address: "https://b.example")
+        store.add(name: "C", address: "https://c.example")
+
+        store.setOrder([b.id, a.id])
+        XCTAssertEqual(store.items.map(\.name), ["B", "A", "C"])
+    }
+
+    func testSetOrderIgnoresUnknownIdentifiers() {
+        let store = makeStore()
+        let a = store.add(name: "A", address: "https://a.example")
+        let b = store.add(name: "B", address: "https://b.example")
+
+        store.setOrder([UUID(), b.id, UUID(), a.id])
+        XCTAssertEqual(store.items.map(\.name), ["B", "A"])
+    }
+
+    func testSetOrderSurvivesAReopen() throws {
+        let suite = "ledge.tests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        let store = FavouritesStore(defaults: defaults)
+        // A brand-new store seeds the starter set; clear it so the assertion is
+        // about the order that was applied, not the seeds.
+        for item in store.items {
+            store.remove(item)
+        }
+        let a = store.add(name: "A", address: "https://a.example")
+        let b = store.add(name: "B", address: "https://b.example")
+        store.setOrder([b.id, a.id])
+
+        let reopened = FavouritesStore(defaults: defaults)
+        XCTAssertEqual(reopened.items.map(\.name), ["B", "A"])
+    }
+
     func testMoveUpAndDownStopAtTheEnds() {
         let store = makeStore()
         let a = store.add(name: "A", address: "https://a.example")

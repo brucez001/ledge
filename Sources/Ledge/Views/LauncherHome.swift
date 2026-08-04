@@ -307,8 +307,8 @@ private struct FavouriteManagerRow: View {
     let onOpen: () -> Void
 
     /// Deleting from the manager list is as destructive as deleting from a
-    /// tile, and the trash button sits next to "Open", so it gets the same
-    /// confirmation the tile's context menu has.
+    /// tile, and the trash button sits next to "Open", so it asks exactly the
+    /// same question the tile and rail menus do.
     @State private var isConfirmingRemoval = false
 
     var body: some View {
@@ -337,17 +337,8 @@ private struct FavouriteManagerRow: View {
                 .buttonStyle(.borderless)
                 .help("Remove favourite")
                 .accessibilityLabel("Remove \(favourite.name)")
-                .confirmationDialog(
-                    "Remove \(favourite.name)?",
-                    isPresented: $isConfirmingRemoval,
-                    titleVisibility: .visible
-                ) {
-                    Button("Remove", role: .destructive) {
-                        controller.removeFavourite(favourite)
-                    }
-                    Button("Cancel", role: .cancel) {}
-                } message: {
-                    Text("This also closes its live session. Signed-in cookies are kept.")
+                .confirmFavouriteRemoval(favourite, isPresented: $isConfirmingRemoval) {
+                    controller.removeFavourite(favourite)
                 }
             }
 
