@@ -99,7 +99,24 @@ enum Theme {
         static let panelCornerRadius: CGFloat = 22
         static let cardCornerRadius: CGFloat = 16
         static let contentCornerRadius: CGFloat = 14
-        static let railWidth: CGFloat = 56
+        /// The rail carries icon-only controls, so it is kept as narrow as a
+        /// comfortable hit target allows: every extra point comes straight out
+        /// of the web content beside it.
+        static let railWidth: CGFloat = 44
+        /// Square hit target for one rail row: a site, a tab, or an icon
+        /// control.
+        static let railItemSize: CGFloat = 34
+        /// Gap between rail rows. Applied as padding *inside* each row rather
+        /// than as stack spacing, so the seam belongs to a row and can accept a
+        /// drop instead of being a dead zone between two targets.
+        static let railRowSpacing: CGFloat = 4
+        /// Full height of a reorderable rail row including its share of the
+        /// spacing -- the height the drop delegate halves to tell "insert above"
+        /// from "insert below".
+        static let railRowHeight: CGFloat = railItemSize + railRowSpacing
+        /// Favicon size inside a rail row, leaving a little padding inside the
+        /// row's hover background.
+        static let railIconSize: CGFloat = 22
         static let tileSize: CGFloat = 104
         static let toolbarHeight: CGFloat = 52
         /// Height of the browser toolbar's address pill (narrower than the
