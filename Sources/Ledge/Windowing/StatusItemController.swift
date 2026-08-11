@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 
 /// Owns the menu-bar (`NSStatusItem`) affordance required by the app's
 /// `.accessory` activation policy -- once the panel itself is hidden, this
@@ -7,6 +8,8 @@ import AppKit
 final class StatusItemController: NSObject, NSMenuDelegate {
     private let panelController: PanelController
     private var statusItem: NSStatusItem?
+    private var dockSideObservation: AnyCancellable?
+    private var edgeRevealObservation: AnyCancellable?
 
     init(panelController: PanelController) {
         self.panelController = panelController
@@ -14,16 +17,39 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
     func install() {
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        item.button?.image = NSImage(
-            systemSymbolName: "rectangle.leadinghalf.inset.filled",
-            accessibilityDescription: "Ledge"
-        )
-        item.button?.image?.isTemplate = true
+        statusItem = item
+        updateStatusItemImage(for: panelController.dockSide)
+
+        // The panel can change sides from a menu command or by being dragged
+        // across the display midpoint. Keep the menu-bar mark in step with
+        // either path instead of waiting for the next menu open.
+        dockSideObservation = panelController.$dockSide.sink { [weak self] dockSide in
+            self?.updateStatusItemImage(for: dockSide)
+        }
+
+        // ⌥⇧⌘E can be pressed while the panel is hidden and no menu is open,
+        // so the status item is the only place the change can be confirmed:
+        // dim the mark whenever edge reveal is turned off.
+        edgeRevealObservation = panelController.preferences.$edgeTriggerEnabled.sink { [weak self] enabled in
+            self?.updateEdgeRevealIndicator(enabled: enabled)
+        }
 
         let menu = NSMenu()
         menu.delegate = self
         item.menu = menu
-        statusItem = item
+    }
+
+    private func updateStatusItemImage(for dockSide: DockSide) {
+        statusItem?.button?.image = LedgeMarkImage.make(dockSide: dockSide)
+    }
+
+    private func updateEdgeRevealIndicator(enabled: Bool) {
+        guard let button = statusItem?.button else { return }
+        let shortcut = GlobalShortcut.toggleEdgeReveal.displayName
+        button.appearsDisabled = !enabled
+        button.toolTip = enabled
+            ? "Ledge — edge hover on (\(shortcut) to turn off)"
+            : "Ledge — edge hover off (\(shortcut) to turn on)"
     }
 
     /// Rebuilt every time the menu is about to open (`NSMenuDelegate`), so
@@ -33,9 +59,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     func menuNeedsUpdate(_ menu: NSMenu) {
         menu.removeAllItems()
 
-        let toggleItem = makeItem("Show/Hide Ledge", #selector(toggleVisibility), key: " ")
-        toggleItem.keyEquivalentModifierMask = [.command, .shift]
-        menu.addItem(toggleItem)
+        menu.addItem(makeItem("Show/Hide Ledge", #selector(toggleVisibility), shortcut: .togglePanel))
 
         menu.addItem(.separator())
 
@@ -56,7 +80,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         // Mirrors the Settings toggle because this is the one setting people
         // need in a hurry -- before sharing a screen, an accidental edge
         // reveal shows whatever is loaded in the panel to everyone watching.
-        let edgeRevealItem = makeItem("Reveal on Edge Hover", #selector(toggleEdgeReveal), key: "")
+        let edgeRevealItem = makeItem("Reveal on Edge Hover", #selector(toggleEdgeReveal), shortcut: .toggleEdgeReveal)
         edgeRevealItem.state = panelController.preferences.edgeTriggerEnabled ? .on : .off
         menu.addItem(edgeRevealItem)
 
@@ -97,20 +121,26 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         return item
     }
 
+    /// Menu items whose action also has a global shortcut advertise that exact
+    /// combination, so the menu and the hotkey can never disagree.
+    private func makeItem(_ title: String, _ action: Selector, shortcut: GlobalShortcut) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: shortcut.keyEquivalent)
+        item.keyEquivalentModifierMask = shortcut.keyEquivalentModifierMask
+        item.target = self
+        return item
+    }
+
     private func makeSitesItem() -> NSMenuItem {
         let sitesItem = NSMenuItem(title: "Sites", action: nil, keyEquivalent: "")
         let submenu = NSMenu(title: "Sites")
         let favourites = panelController.favourites.items
-        for (index, favourite) in favourites.enumerated() {
+        for favourite in favourites {
             let item = NSMenuItem(title: favourite.name, action: #selector(openSite(_:)), keyEquivalent: "")
             item.target = self
             item.representedObject = favourite.id
-            // Only the first nine favourites get a ⌘-digit equivalent --
-            // there is no tenth digit key to hand out.
-            if index < 9 {
-                item.keyEquivalent = "\(index + 1)"
-                item.keyEquivalentModifierMask = [.command]
-            }
+            // No ⌘-digit equivalents here: those digits name rail rows -- open
+            // sessions -- not Home favourites, so advertising them on this menu
+            // would promise something the shortcut does not do.
             submenu.addItem(item)
         }
         if favourites.isEmpty {

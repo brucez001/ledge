@@ -31,7 +31,6 @@ struct LauncherShell: View {
                 LauncherHome(
                     controller: controller,
                     favourites: favourites,
-                    sessionManager: sessionManager,
                     preferences: preferences
                 )
                     .opacity(controller.showsStartPage ? 1 : 0)
@@ -70,9 +69,7 @@ struct LauncherShell: View {
         .animation(preferences.animationSpeed.contentAnimation, value: controller.destination)
         .animation(preferences.animationSpeed.contentAnimation, value: controller.dockSide)
         .sheet(isPresented: $controller.isShowingAddFavourite) {
-            AddFavouriteSheet(store: favourites) { added in
-                controller.openFavourite(added)
-            }
+            AddFavouriteSheet(store: favourites)
         }
     }
 }

@@ -98,8 +98,8 @@ final class SessionHostContainerView: NSView {
         }
 
         // Removal is decided by *view identity*, not by key. A session can be
-        // re-filed under a new `SessionKind` while keeping its web view (a tab
-        // promoted to a saved site), and a key-based sweep would tear that very
+        // re-filed under a new `SessionKind` while keeping its web view (when a
+        // Home favourite is added or removed), and a key-based sweep would tear that
         // web view out of the hierarchy -- breaking the invariant that a live
         // session is never unmounted.
         let liveViews = Set(sessions.map { ObjectIdentifier($0.webView) })

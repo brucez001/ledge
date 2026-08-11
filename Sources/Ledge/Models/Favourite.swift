@@ -1,35 +1,21 @@
 import Foundation
 
-/// A saved shortcut shown in the launcher rail/grid, backed by a persistent
-/// `WebSession`. Only a URL and a display name are user-facing; `symbol`
-/// and `tint` are retained purely so favourites saved by earlier builds
-/// (which asked for an SF Symbol + accent colour) keep decoding cleanly
-/// from `UserDefaults` -- the current UI derives icons from fetched
-/// favicons instead and never reads or writes these fields.
+/// A shortcut shown on Home. Opening it focuses or creates a live session,
+/// but the shortcut itself never owns that session.
+///
+/// `symbol` and `tint` are retained only so payloads written by earlier builds
+/// keep decoding cleanly; the current UI derives icons from favicons. Fields for
+/// the removed per-site user-agent and reload-on-focus options are gone
+/// entirely: unknown keys in a stored payload decode harmlessly.
 struct Favourite: Codable, Hashable, Identifiable {
     var id: UUID = UUID()
     var name: String
     var address: String
     var symbol: String? = nil
     var tint: CodableColor? = nil
-    /// Whether this site is loaded with WebKit's default (desktop Safari)
-    /// identity or a mobile one. Optional so favourites written by earlier
-    /// builds keep decoding.
-    var userAgentMode: UserAgentMode? = nil
-    /// Reload this site when it becomes visible again, for dashboards that
-    /// go stale while the panel is hidden.
-    var reloadsOnFocus: Bool? = nil
 
     var url: URL {
         URL(string: address) ?? URL(string: "https://www.google.com")!
-    }
-
-    var resolvedUserAgentMode: UserAgentMode {
-        userAgentMode ?? .desktop
-    }
-
-    var resolvedReloadsOnFocus: Bool {
-        reloadsOnFocus ?? false
     }
 
     /// Longest page title still worth using as a rail label; anything longer
@@ -139,18 +125,6 @@ final class FavouritesStore: ObservableObject {
         persist()
     }
 
-    /// Switches a site between desktop and mobile identities. Returns the
-    /// updated favourite so callers can re-apply it to a live session.
-    @discardableResult
-    func setUserAgentMode(_ mode: UserAgentMode, for item: Favourite) -> Favourite? {
-        mutate(item) { $0.userAgentMode = mode }
-    }
-
-    @discardableResult
-    func setReloadsOnFocus(_ enabled: Bool, for item: Favourite) -> Favourite? {
-        mutate(item) { $0.reloadsOnFocus = enabled }
-    }
-
     /// Updates the stored address (used when a site permanently moves).
     @discardableResult
     func setAddress(_ address: String, for item: Favourite) -> Favourite? {
@@ -217,10 +191,9 @@ final class FavouritesStore: ObservableObject {
         persist()
     }
 
-    /// Rewrites the order to match `ids`, which is how the rail applies a move
-    /// made in its unified list. Ids that are not present are ignored, and any
-    /// favourite `ids` omits keeps its relative position at the end, so a stale
-    /// list can never drop a saved site.
+    /// Rewrites the Home shortcut order to match `ids`. Unknown ids are
+    /// ignored, and omitted favourites keep their relative order at the end, so
+    /// a stale list can never drop a shortcut.
     func setOrder(_ ids: [Favourite.ID]) {
         var remaining = items
         var reordered: [Favourite] = []

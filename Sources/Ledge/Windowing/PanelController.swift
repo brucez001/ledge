@@ -6,7 +6,7 @@ import SwiftUI
 enum LauncherDestination: Hashable {
     case home
     case favourite(UUID)
-    /// A transient tab. It shows the start page until something is loaded
+    /// An ordinary session. It shows the start page until something is loaded
     /// into it (see `blankTabIDs`), then the web view.
     case tab(UUID)
 }
@@ -76,18 +76,13 @@ final class PanelController: NSObject, ObservableObject {
     /// covers the pane, and rather than depend on tracking areas firing
     /// beneath it, this is measured directly.
     @Published private(set) var isPointerNearPanelTop = false
-    /// Transient tabs that have not been navigated anywhere yet, and so show
+    /// Ordinary sessions that have not been navigated anywhere yet, and so show
     /// the start page.
     ///
     /// Tracked here rather than inferred from `WebSession.currentURL` so the
     /// view layer re-renders on the change: the shell observes the controller
     /// and the session *manager*, not every individual session.
     @Published private(set) var blankTabIDs: Set<UUID> = []
-
-    /// Where each transient tab sits in the rail, relative to the saved sites.
-    /// In-memory only: tabs are not restored across launches, so neither is
-    /// their placement.
-    @Published private(set) var tabAnchors: [UUID: RailAnchor] = [:]
 
     let sessionManager = SessionManager()
     let favourites = FavouritesStore()
@@ -144,7 +139,6 @@ final class PanelController: NSObject, ObservableObject {
     private var pointerExitHide: DispatchWorkItem?
     private var cancellables = Set<AnyCancellable>()
 
-    private let activeFavouriteKey = "ledge.activeFavouriteID"
     private let frameYKey = "ledge.frameY"
     private let dockSideKey = "ledge.dockSide"
     private let autoHideKey = "ledge.autoHideEnabled"
@@ -185,7 +179,6 @@ final class PanelController: NSObject, ObservableObject {
             height: max(400, CGFloat(defaults.object(forKey: "ledge.panelHeight") as? Double ?? Self.expandedHeight))
         )
         super.init()
-        restoreActiveDestination()
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(screenParametersChanged),
@@ -224,7 +217,6 @@ final class PanelController: NSObject, ObservableObject {
         // changes so this does not depend on Combine's initial-value timing.
         FaviconStore.shared.source = preferences.faviconSource
         observePreferences()
-        observeFavouriteOrder()
     }
 
     deinit {
@@ -233,35 +225,7 @@ final class PanelController: NSObject, ObservableObject {
         if let edgeMouseMonitor { NSEvent.removeMonitor(edgeMouseMonitor) }
     }
 
-    private func restoreActiveDestination() {
-        guard let idString = UserDefaults.standard.string(forKey: activeFavouriteKey),
-              let id = UUID(uuidString: idString),
-              let favourite = favourites.items.first(where: { $0.id == id }) else { return }
-        let session = sessionManager.session(forFavourite: favourite)
-        sessionManager.setActiveSession(session.id)
-        destination = .favourite(favourite.id)
-    }
-
     // MARK: - Preferences wiring
-
-    /// Keeps the live tab order in step with the rail whenever the favourites
-    /// are reordered somewhere that does not go through `applyRailOrder` -- the
-    /// home grid's tile drags, the favourites manager's list, and adding or
-    /// removing a site. Tabs follow their anchors, so their display order can
-    /// change without the session list being touched.
-    ///
-    /// Safe against feedback: the handler only writes the tab order, never the
-    /// favourites, so it cannot retrigger itself.
-    private func observeFavouriteOrder() {
-        favourites.$items
-            .dropFirst()
-            .sink { [weak self] _ in
-                // After the store has published, so `railEntries` sees the new
-                // favourite order rather than the previous one.
-                Task { @MainActor in self?.syncTabOrder() }
-            }
-            .store(in: &cancellables)
-    }
 
     /// Reacts to user-facing preference changes. Each property is observed
     /// individually (rather than a single `objectWillChange` sink) so each
@@ -513,15 +477,12 @@ final class PanelController: NSObject, ObservableObject {
             }
             // AppKit reports `isVisible == true` as soon as the panel is
             // ordered front, even though the slide-in animation is still
-            // running -- so the session lifecycle hook fires immediately
-            // rather than waiting on the cosmetic animation to finish. Only
-            // do this when coming up from fully hidden: interrupting a
-            // `hide()` means the session was never actually reported hidden
-            // in the first place (that only happens in `hide()`'s own,
-            // now-superseded, completion), so there is nothing to re-reveal.
+            // running, so treat the panel as visible now rather than waiting
+            // on the cosmetic animation. Only when coming up from fully
+            // hidden: interrupting a `hide()` means the panel was never
+            // reported hidden in the first place.
             if wasFullyHidden {
                 isPanelVisible = true
-                sessionManager.panelDidReveal()
             }
             animateReveal(to: target, generation: generation)
         }
@@ -613,7 +574,6 @@ final class PanelController: NSObject, ObservableObject {
                 self.isAnimatingPanel = false
                 self.isPanelVisible = false
                 self.panelPhase = .hidden
-                self.sessionManager.panelDidHide()
                 self.updateEdgeTrigger()
             }
         })
@@ -657,30 +617,54 @@ final class PanelController: NSObject, ObservableObject {
 
     // MARK: - Navigation
 
-    /// Opens a saved site.
+    /// Opens a Home favourite by focusing its existing session or creating one.
     ///
-    /// An empty tab is a placeholder for "somewhere to go", so it gets *filled*
-    /// by whatever is opened from it -- a typed address or, here, a saved site.
-    /// That is what makes a second, independent view of a site possible: the
-    /// saved item keeps its own warm session, and the tab gets its own. Jumping
-    /// to the saved session and throwing the tab away instead would mean the
-    /// tab could never be used to look at a site you had also saved.
-    ///
-    /// With no empty tab in play this is the plain dock behaviour: switch to the
-    /// site's single persistent session.
+    /// A selected blank session is reused and associated with the favourite, so
+    /// clicking a shortcut does not leave a redundant empty row behind.
     func openFavourite(_ favourite: Favourite) {
         if let tabID = activeTabID, blankTabIDs.contains(tabID) {
-            load(favourite.url, inTab: tabID)
-            return
+            if sessionManager.existingSession(for: .favourite(favourite.id)) != nil {
+                // The favourite is already open, but the explicit blank row is
+                // somewhere the user asked to navigate. Fill it as an ordinary
+                // second session instead of discarding it and focusing the first.
+                guard let session = sessionManager.existingSession(for: .tab(tabID)) else { return }
+                session.iconHost = favourite.host
+                session.load(favourite.url)
+                blankTabIDs.remove(tabID)
+                openSession(.tab(tabID))
+                return
+            }
+            guard let session = sessionManager.existingSession(for: .tab(tabID)) else { return }
+            sessionManager.rekey(session, to: .favourite(favourite.id))
+            session.iconHost = favourite.host
+            session.load(favourite.url)
+            blankTabIDs.remove(tabID)
+            openSession(.favourite(favourite.id))
+        } else {
+            let session = sessionManager.session(forFavourite: favourite)
+            openSession(session.id)
         }
-
-        let session = sessionManager.session(forFavourite: favourite)
-        sessionManager.setActiveSession(session.id)
-        destination = .favourite(favourite.id)
-        UserDefaults.standard.set(favourite.id.uuidString, forKey: activeFavouriteKey)
     }
 
-    /// Fills a transient tab with `url` and selects it.
+    /// Opens a second, independent session for a Home favourite even when that
+    /// favourite already has another live session.
+    @discardableResult
+    func openFavouriteInNewSession(_ favourite: Favourite) -> UUID? {
+        openInNewSession(favourite.url, iconHost: favourite.host)
+    }
+
+    /// Opens `url` in a fresh ordinary session and selects it.
+    @discardableResult
+    func openInNewSession(_ url: URL, iconHost: String? = nil) -> UUID? {
+        let session = sessionManager.newTabSession()
+        guard let tabID = session.id.tabID else { return nil }
+        session.iconHost = iconHost ?? url.host
+        session.load(url)
+        openSession(.tab(tabID))
+        return tabID
+    }
+
+    /// Fills an ordinary session with `url` and selects it.
     private func load(_ url: URL, inTab tabID: UUID) {
         guard let session = sessionManager.existingSession(for: .tab(tabID)) else { return }
         session.load(url)
@@ -688,14 +672,6 @@ final class PanelController: NSObject, ObservableObject {
         sessionManager.setActiveSession(session.id)
         destination = .tab(tabID)
         isShowingFindBar = false
-        UserDefaults.standard.removeObject(forKey: activeFavouriteKey)
-    }
-
-    /// 0-based convenience for the ⌘1…⌘9 shortcuts and the status-bar Sites
-    /// menu. Silently ignored if there is no favourite at that index.
-    func openFavourite(at index: Int) {
-        guard favourites.items.indices.contains(index) else { return }
-        openFavourite(favourites.items[index])
     }
 
     /// Menu-bar "Sites" entry point. Unlike plain `openFavourite(_:)` --
@@ -710,20 +686,14 @@ final class PanelController: NSObject, ObservableObject {
         openFavourite(favourite)
     }
 
-    /// 0-based convenience mirroring `openFavourite(at:)`.
-    func revealAndOpen(at index: Int) {
-        guard favourites.items.indices.contains(index) else { return }
-        revealAndOpen(favourites.items[index])
-    }
-
     /// The favourite backing the current destination, if any -- `nil` for
-    /// `.home` and for transient tabs.
+    /// `.home` and for ordinary sessions.
     var activeFavourite: Favourite? {
         guard case .favourite(let id) = destination else { return nil }
         return favourites.favourite(withID: id)
     }
 
-    /// The transient tab backing the current destination, if any.
+    /// The ordinary session backing the current destination, if any.
     var activeTabID: UUID? {
         guard case .tab(let id) = destination else { return nil }
         return id
@@ -743,33 +713,7 @@ final class PanelController: NSObject, ObservableObject {
         }
     }
 
-    /// Wraps forward through the favourites list; starts at the first item
-    /// when nothing is currently active (matches `.home`'s behaviour).
-    func selectNextFavourite() {
-        let items = favourites.items
-        guard !items.isEmpty else { return }
-        guard let current = activeFavourite,
-              let index = items.firstIndex(where: { $0.id == current.id }) else {
-            openFavourite(items[0])
-            return
-        }
-        openFavourite(items[(index + 1) % items.count])
-    }
-
-    /// Wraps backward through the favourites list; starts at the last item
-    /// when nothing is currently active.
-    func selectPreviousFavourite() {
-        let items = favourites.items
-        guard !items.isEmpty else { return }
-        guard let current = activeFavourite,
-              let index = items.firstIndex(where: { $0.id == current.id }) else {
-            openFavourite(items[items.count - 1])
-            return
-        }
-        openFavourite(items[(index - 1 + items.count) % items.count])
-    }
-
-    /// Opens an empty transient tab showing the start page, ready for an
+    /// Opens an empty ordinary session showing the start page, ready for an
     /// address. This is the rail's `+`: it adds an item you can navigate,
     /// rather than asking for a URL up front in a dialog.
     ///
@@ -791,7 +735,6 @@ final class PanelController: NSObject, ObservableObject {
         sessionManager.setActiveSession(session.id)
         destination = .tab(id)
         isShowingFindBar = false
-        UserDefaults.standard.removeObject(forKey: activeFavouriteKey)
         bumpHomeFocus()
         return id
     }
@@ -800,8 +743,8 @@ final class PanelController: NSObject, ObservableObject {
     ///
     /// It reuses the tab already being viewed when there is one, so typing
     /// into a blank tab fills *that* tab rather than spawning another; from
-    /// Home or a saved site it opens a new tab instead, so an ad-hoc search
-    /// never stomps a saved site's session.
+    /// Home or a favourite-associated session it opens a new one instead, so
+    /// an ad-hoc search never stomps an existing session.
     func open(address: String) {
         guard let url = AddressResolver.resolve(address, using: preferences.searchEngine) else { return }
 
@@ -816,65 +759,55 @@ final class PanelController: NSObject, ObservableObject {
     }
 
     func openTab(_ id: UUID) {
-        guard let session = sessionManager.existingSession(for: .tab(id)) else { return }
+        openSession(.tab(id))
+    }
+
+    /// Selects an existing rail session without caring whether it is associated
+    /// with a Home favourite.
+    func openSession(_ kind: SessionKind) {
+        guard let session = sessionManager.existingSession(for: kind) else { return }
         sessionManager.setActiveSession(session.id)
-        destination = .tab(id)
+        destination = switch kind {
+        case .favourite(let id): .favourite(id)
+        case .tab(let id): .tab(id)
+        }
         isShowingFindBar = false
-        if blankTabIDs.contains(id) {
+        if let tabID = kind.tabID, blankTabIDs.contains(tabID) {
             bumpHomeFocus()
         }
     }
 
-    /// Closes a transient tab. Selecting what to show next mirrors a browser:
-    /// the neighbouring tab if there is one, otherwise the start page.
+    /// Compatibility entry point for callers that already have a tab id.
     func closeTab(_ id: UUID) {
-        // Rail order, not session-creation order: the neighbour the user sees is
-        // the one that should take over.
-        let tabs = RailLayout.tabs(in: railEntries)
-        let wasActive = activeTabID == id
-        let successor = TabSelection.successor(after: id, in: tabs)
-
-        sessionManager.closeSession(kind: .tab(id))
-        blankTabIDs.remove(id)
-        // Its placement dies with it; a stale anchor would otherwise accumulate
-        // for every tab ever opened.
-        tabAnchors.removeValue(forKey: id)
-
-        guard wasActive else { return }
-        if let successor {
-            openTab(successor)
-        } else {
-            goHome()
-        }
+        closeSession(.tab(id))
     }
 
     func goHome() {
         destination = .home
         isShowingFindBar = false
-        // Otherwise `activeSessionID` keeps pointing at the last favourite,
-        // so reopening that same favourite later hits `setActiveSession`'s
-        // early-return (`kind != activeSessionID` is false) and
-        // `didBecomeVisible()` never runs -- silently breaking "reload when
-        // shown" for that site. `SessionHostView` only unmounts a web view
-        // that is absent from `sessionManager.sessions`; passing `nil` here
-        // just hides it, so no session is torn down by going home.
+        // Home shows no session, so clear the selection rather than leaving
+        // `activeSessionID` pointing at the site last viewed. `SessionHostView`
+        // only unmounts a web view that is absent from
+        // `sessionManager.sessions`; passing `nil` here just hides it, so no
+        // session is torn down by going home.
         sessionManager.setActiveSession(nil)
-        UserDefaults.standard.removeObject(forKey: activeFavouriteKey)
         bumpHomeFocus()
     }
 
     func removeFavourite(_ favourite: Favourite) {
-        // Re-home any tab anchored to this site onto the row above it, so an
-        // interleaved tab stays where it is instead of dropping to the end of
-        // the rail when its anchor disappears.
-        let remaining = RailLayout.removing(.favourite(favourite.id), from: railEntries)
-
         favourites.remove(favourite)
-        sessionManager.closeSession(kind: .favourite(favourite.id))
-        tabAnchors = RailLayout.anchors(in: remaining)
 
+        // Removing the favourite never touches its live session: a Home
+        // shortcut is just that, a shortcut, and forgetting it should not
+        // cost an open tab its page. If the session is still keyed to this
+        // (now gone) favourite, re-key it to a fresh tab identity in its
+        // same rail row instead -- it becomes an ordinary session,
+        // exactly as if it had been opened by hand.
+        guard let session = sessionManager.existingSession(for: .favourite(favourite.id)) else { return }
+        let tabID = UUID()
+        sessionManager.rekey(session, to: .tab(tabID))
         if destination == .favourite(favourite.id) {
-            goHome()
+            destination = .tab(tabID)
         }
     }
 
@@ -911,28 +844,54 @@ final class PanelController: NSObject, ObservableObject {
         sessionManager.activeSession()?.reload()
     }
 
-    /// Persists the user-agent choice on the favourite and applies it to the
-    /// live session (if one exists) so an open tab updates immediately.
-    func setUserAgentMode(_ mode: UserAgentMode, for favourite: Favourite) {
-        guard let updated = favourites.setUserAgentMode(mode, for: favourite) else { return }
-        sessionManager.applyPreferences(from: updated)
-    }
-
-    func setReloadsOnFocus(_ enabled: Bool, for favourite: Favourite) {
-        guard let updated = favourites.setReloadsOnFocus(enabled, for: favourite) else { return }
-        sessionManager.applyPreferences(from: updated)
-    }
-
-    /// Frees the active session's `WKWebView` (e.g. "close this tab to
-    /// reclaim memory") and returns to the home screen, since there is
-    /// nothing left to show in its place.
+    /// Closes the active rail session.
     func closeActiveSession() {
         guard let kind = sessionManager.activeSessionID else { return }
-        sessionManager.closeSession(kind: kind)
-        goHome()
+        closeSession(kind)
     }
 
-    /// "Close live sessions" / "Free memory": routes through the controller
+    /// Closes any rail session and selects its visible neighbour. A Home
+    /// favourite is never removed by closing its associated session.
+    func closeSession(_ kind: SessionKind) {
+        guard sessionManager.existingSession(for: kind) != nil else { return }
+        let destinationKind: SessionKind? = switch destination {
+        case .home: nil
+        case .favourite(let id): .favourite(id)
+        case .tab(let id): .tab(id)
+        }
+        let wasActive = sessionManager.activeSessionID == kind || destinationKind == kind
+        let successor = SessionSelection.successor(after: kind, in: sessionManager.sessionOrder)
+
+        sessionManager.closeSession(kind: kind)
+        if let tabID = kind.tabID {
+            blankTabIDs.remove(tabID)
+        }
+
+        guard wasActive else { return }
+        if let successor {
+            openSession(successor)
+        } else {
+            goHome()
+        }
+    }
+
+    /// The close action available for whatever is on screen.
+    func closeAction() -> CloseAction {
+        CloseCommand.resolve(destination: destination)
+    }
+
+    /// Carries out a resolved close, so the key handler holds no rule of its
+    /// own about what a keystroke costs.
+    func performClose(_ action: CloseAction) {
+        switch action {
+        case .closeSession(let kind):
+            closeSession(kind)
+        case .nothing:
+            break
+        }
+    }
+
+    /// "Close all sessions" / "Free memory": routes through the controller
     /// instead of calling `sessionManager.closeAllSessions()` directly, so a
     /// browser-mode destination is never left pointing at a session that no
     /// longer exists -- which otherwise showed a blank, chrome-less pane.
@@ -940,8 +899,7 @@ final class PanelController: NSObject, ObservableObject {
     /// active-session cleanup has nothing stale left to reference.
     func closeAllSessions() {
         sessionManager.closeAllSessions()
-        // Every tab went with them, so no placement is left to remember.
-        tabAnchors.removeAll()
+        blankTabIDs.removeAll()
         goHome()
     }
 
@@ -972,52 +930,31 @@ final class PanelController: NSObject, ObservableObject {
     func addCurrentPageToFavourites() -> Favourite? {
         guard let session = sessionManager.activeSession(),
               let tabID = session.id.tabID else {
-            // Not a tab: there is nothing to move, so just save and open it.
-            guard let session = sessionManager.activeSession(),
-                  let url = session.currentURL, url.host != nil else { return nil }
-            let derived = Favourite.preferredName(pageTitle: session.pageTitle, host: session.displayHost)
-            let added = favourites.add(name: favourites.uniqueName(derived), address: url.absoluteString)
-            openFavourite(added)
-            return added
+            return nil
         }
         return pinTab(tabID)
     }
 
-    /// Turns a transient tab into a saved site, keeping its live page.
-    ///
-    /// The new favourite takes the tab's own place in the rail rather than
-    /// jumping to the end: keeping a site should change what it *is*, not where
-    /// it sits. Position and persistence are separate concerns, and a drag never
-    /// triggers this -- only the explicit "Add to Favourites".
+    /// Adds a Home shortcut for an open tab while preserving the same live
+    /// session and its rail position.
     @discardableResult
     func pinTab(_ tabID: UUID) -> Favourite? {
         guard let session = sessionManager.existingSession(for: .tab(tabID)),
               let url = session.currentURL,
               url.host != nil else { return nil }
 
-        // Captured before anything changes: the row the tab occupies is the row
-        // the favourite must end up in. Keeping only its anchor would lose its
-        // position relative to other tabs sharing that anchor.
-        let entries = railEntries
         let derived = Favourite.preferredName(pageTitle: session.pageTitle, host: session.displayHost)
         let added = favourites.add(name: favourites.uniqueName(derived), address: url.absoluteString)
 
-        // The tab *becomes* the saved site: the same live web view carries on
-        // under the new identity, so the page stays exactly as it was instead
-        // of reloading.
+        // Re-keying only records the shortcut association. The rail is ordered
+        // by the session array, so its row does not move or change behaviour.
         sessionManager.rekey(session, to: .favourite(added.id))
         session.iconHost = added.host
-        session.reloadsOnFocus = added.resolvedReloadsOnFocus
         blankTabIDs.remove(tabID)
-        tabAnchors.removeValue(forKey: tabID)
 
-        // `add` appended, so put the row back where the tab stood.
-        applyRailOrder(
-            RailLayout.replacing(.tab(tabID), with: .favourite(added.id), in: entries)
-        )
-
-        destination = .favourite(added.id)
-        UserDefaults.standard.set(added.id.uuidString, forKey: activeFavouriteKey)
+        if destination == .tab(tabID) {
+            destination = .favourite(added.id)
+        }
         return added
     }
 
@@ -1043,14 +980,18 @@ final class PanelController: NSObject, ObservableObject {
 
     // MARK: - Rail order
 
-    /// The rail's rows in display order: saved sites and transient tabs in one
-    /// list, so either kind can be moved anywhere among the other.
+    /// The currently open sessions in their in-memory rail order.
     var railEntries: [RailEntry] {
-        RailLayout.entries(
-            favourites: favourites.items.map(\.id),
-            tabs: sessionManager.tabOrder,
-            anchors: tabAnchors
-        )
+        RailLayout.entries(sessions: sessionManager.sessionOrder)
+    }
+
+    /// Selects the rail row a ⌘1…⌘9 shortcut names, counting from the top of
+    /// the rail so the shortcut follows the user's own ordering. Nothing
+    /// happens when the rail has no such row: the digits name open sessions,
+    /// so they never open anything that is not already there.
+    func selectRailEntry(numbered number: Int) {
+        guard let entry = RailLayout.entry(numbered: number, in: railEntries) else { return }
+        openSession(entry.sessionKind)
     }
 
     /// Moves a row by drop position: the upper half of the row under the pointer
@@ -1072,29 +1013,9 @@ final class PanelController: NSObject, ObservableObject {
         applyRailOrder(reordered)
     }
 
-    /// Projects a reordered rail back onto its two sources: the persisted
-    /// favourite order, the in-memory tab order, and the tabs' anchors.
+    /// Reordering the rail never changes Home favourite order.
     private func applyRailOrder(_ entries: [RailEntry]) {
-        // Validate before mutating anything: a rail derived from a stale
-        // snapshot must be rejected whole rather than applied to one store and
-        // not the others.
-        let tabs = RailLayout.tabs(in: entries)
-        guard Set(tabs) == Set(sessionManager.tabOrder) else { return }
-
-        favourites.setOrder(RailLayout.favourites(in: entries))
-        sessionManager.setTabOrder(tabs)
-        tabAnchors = RailLayout.anchors(in: entries)
-    }
-
-    /// Re-projects the tab order after the favourites were reordered elsewhere.
-    ///
-    /// The home grid and the favourites manager reorder saved sites directly, and
-    /// tabs follow their anchors, so the rail can end up displaying tabs in an
-    /// order the session list no longer matches. That stale order fed tab
-    /// successor selection when closing a tab, and could reshuffle tabs when two
-    /// anchor groups later merged.
-    private func syncTabOrder() {
-        sessionManager.setTabOrder(RailLayout.tabs(in: railEntries))
+        sessionManager.setSessionOrder(RailLayout.sessionKinds(in: entries))
     }
 
     // MARK: - Geometry
@@ -1370,7 +1291,6 @@ final class PanelController: NSObject, ObservableObject {
         if panelPhase == .visible, !panel.isVisible {
             panelPhase = .hidden
             isPanelVisible = false
-            sessionManager.panelDidHide()
             updateEdgeTrigger()
             return
         }

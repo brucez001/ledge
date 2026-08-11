@@ -5,8 +5,9 @@ import XCTest
 final class FavouritesStoreTests: XCTestCase {
 
     /// Favourites written by earlier builds carried an SF Symbol + accent
-    /// colour and no user-agent/reload fields. They must keep decoding, and
-    /// the new fields must fall back to sensible defaults.
+    /// colour, and later ones carried per-site user-agent and reload-on-focus
+    /// fields that no longer exist. Every such payload must keep decoding, with
+    /// the retired keys ignored rather than failing the whole list.
     func testLegacyPayloadStillDecodesWithDefaults() throws {
         let json = """
         [{
@@ -14,7 +15,9 @@ final class FavouritesStoreTests: XCTestCase {
           "name": "Legacy",
           "address": "https://example.com",
           "symbol": "star.fill",
-          "tint": { "red": 0.1, "green": 0.2, "blue": 0.3, "opacity": 1 }
+          "tint": { "red": 0.1, "green": 0.2, "blue": 0.3, "opacity": 1 },
+          "userAgentMode": "mobile",
+          "reloadsOnFocus": true
         }]
         """
         let decoded = try JSONDecoder().decode([Favourite].self, from: Data(json.utf8))
@@ -22,20 +25,20 @@ final class FavouritesStoreTests: XCTestCase {
 
         XCTAssertEqual(favourite.name, "Legacy")
         XCTAssertEqual(favourite.symbol, "star.fill")
-        XCTAssertEqual(favourite.resolvedUserAgentMode, .desktop)
-        XCTAssertFalse(favourite.resolvedReloadsOnFocus)
+        XCTAssertEqual(favourite.address, "https://example.com")
     }
 
-    func testRoundTripPreservesNewFields() throws {
+    func testRoundTripPreservesTheStoredFields() throws {
         var favourite = Favourite(name: "Docs", address: "https://example.com")
-        favourite.userAgentMode = .mobile
-        favourite.reloadsOnFocus = true
+        favourite.symbol = "book"
 
         let data = try JSONEncoder().encode([favourite])
         let decoded = try JSONDecoder().decode([Favourite].self, from: data)
 
-        XCTAssertEqual(decoded.first?.resolvedUserAgentMode, .mobile)
-        XCTAssertEqual(decoded.first?.resolvedReloadsOnFocus, true)
+        XCTAssertEqual(decoded.first?.name, "Docs")
+        XCTAssertEqual(decoded.first?.address, "https://example.com")
+        XCTAssertEqual(decoded.first?.symbol, "book")
+        XCTAssertEqual(decoded.first?.id, favourite.id)
     }
 
     func testHostStripsWWWPrefix() {
@@ -59,20 +62,6 @@ final class FavouritesStoreTests: XCTestCase {
 
         store.remove(added)
         XCTAssertNil(store.favourite(withID: added.id))
-    }
-
-    func testPerSiteFlagsPersistOnTheStoredItem() throws {
-        let store = makeStore()
-        let added = store.add(name: "Chat", address: "https://example.com")
-
-        let mobile = try XCTUnwrap(store.setUserAgentMode(.mobile, for: added))
-        XCTAssertEqual(mobile.resolvedUserAgentMode, .mobile)
-        XCTAssertEqual(store.favourite(withID: added.id)?.resolvedUserAgentMode, .mobile)
-
-        let reloading = try XCTUnwrap(store.setReloadsOnFocus(true, for: added))
-        XCTAssertTrue(reloading.resolvedReloadsOnFocus)
-        // The earlier change must not have been clobbered.
-        XCTAssertEqual(reloading.resolvedUserAgentMode, .mobile)
     }
 
     func testSetAddressRejectsBlankInput() {
@@ -232,31 +221,6 @@ final class FavouritesStoreTests: XCTestCase {
         XCTAssertEqual(store.items.map(\.name), ["B", "C", "A"])
     }
 
-    // MARK: - Drag payload
-
-    func testDragPayloadRoundTrips() {
-        let id = UUID()
-        XCTAssertEqual(SiteDragPayload.decode(SiteDragPayload.encode(id)), id)
-    }
-
-    func testTabPayloadRoundTrips() {
-        let id = UUID()
-        XCTAssertEqual(SiteDragPayload.decodeItem(SiteDragPayload.encodeTab(id)), .tab(id))
-        XCTAssertEqual(SiteDragPayload.decodeItem(SiteDragPayload.encode(id)), .site(id))
-    }
-
-    /// The site-only decoder must not accept a tab, or dragging a tab would be
-    /// treated as reordering a favourite that does not exist.
-    func testSiteDecoderRejectsATabPayload() {
-        XCTAssertNil(SiteDragPayload.decode(SiteDragPayload.encodeTab(UUID())))
-    }
-
-    func testItemDecoderRejectsForeignText() {
-        XCTAssertNil(SiteDragPayload.decodeItem("hello"))
-        XCTAssertNil(SiteDragPayload.decodeItem(UUID().uuidString))
-        XCTAssertNil(SiteDragPayload.decodeItem("ledge.tab:not-a-uuid"))
-    }
-
     /// Text dropped from another app must not be mistaken for a reorder.
     func testDragPayloadRejectsForeignText() {
         XCTAssertNil(SiteDragPayload.decode("hello"))
@@ -288,13 +252,6 @@ final class FavouritesStoreTests: XCTestCase {
 
         _ = FavouritesStore(defaults: suite)
         XCTAssertEqual(suite.data(forKey: "ledge.favourites.unreadable"), corrupt)
-    }
-
-    func testUserAgentModeToggles() {
-        XCTAssertEqual(UserAgentMode.desktop.toggled, .mobile)
-        XCTAssertEqual(UserAgentMode.mobile.toggled, .desktop)
-        XCTAssertNil(UserAgentMode.desktop.customUserAgent)
-        XCTAssertNotNil(UserAgentMode.mobile.customUserAgent)
     }
 
     // MARK: - Naming a site saved from the page you are looking at
@@ -347,12 +304,10 @@ final class FavouritesStoreTests: XCTestCase {
         let suite = makeSuite()
         let store = FavouritesStore(defaults: suite)
         let added = store.add(name: "Persisted", address: "https://example.com")
-        store.setUserAgentMode(.mobile, for: added)
 
         let reopened = FavouritesStore(defaults: suite)
         let restored = try XCTUnwrap(reopened.favourite(withID: added.id))
         XCTAssertEqual(restored.name, "Persisted")
-        XCTAssertEqual(restored.resolvedUserAgentMode, .mobile)
     }
 
     // MARK: - Helpers

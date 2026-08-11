@@ -1,24 +1,21 @@
 import AppKit
 import WebKit
 
-/// One persistent, live `WKWebView` -- either bound to a favourite or the
-/// single transient "browse" session. The web view is created once and
-/// lives for as long as the session does; switching away from it only hides
-/// it (see `SessionHostView`), it is never torn down or reloaded.
+/// One persistent, live `WKWebView`. It may be associated with a Home
+/// favourite, but every open session has the same lifetime and behaviour.
+/// Switching away only hides it (see `SessionHostView`).
 @MainActor
 // Deliberately not `Identifiable`: nothing iterates sessions in a `ForEach`,
 // and the protocol's `id` requirement is nonisolated, which a mutable
 // main-actor property cannot satisfy. `id` has to be mutable so a tab can be
-// promoted to a saved site without rebuilding the session (see `adopt`).
+// associated with a Home favourite without rebuilding it (see `adopt`).
 final class WebSession: NSObject, ObservableObject {
     /// Zoom steps offered by ⌘+ / ⌘- so a cramped panel can still show a
     /// desktop layout comfortably.
     static let zoomSteps: [Double] = [0.5, 0.67, 0.75, 0.85, 1.0, 1.15, 1.3, 1.5, 1.75, 2.0]
 
-    /// Not `let`: a transient tab keeps its live web view when it is promoted
-    /// to a saved site, and only its identity changes (see
-    /// `SessionManager.rekey`). Re-creating the session instead would reload
-    /// the page and throw away scroll position and form state.
+    /// Not `let`: adding or removing a Home favourite changes the session's
+    /// association without rebuilding its web view.
     private(set) var id: SessionKind
     let webView: WKWebView
 
@@ -31,7 +28,6 @@ final class WebSession: NSObject, ObservableObject {
     /// Human-readable description of the last navigation failure, cleared as
     /// soon as a new navigation starts. Drives the inline error banner.
     @Published var loadErrorMessage: String?
-    @Published private(set) var userAgentMode: UserAgentMode
     @Published private(set) var zoom: Double = 1.0
     /// Most recent find-in-page match count, for the find bar's counter.
     @Published var lastFindMatched: Bool?
@@ -39,14 +35,9 @@ final class WebSession: NSObject, ObservableObject {
     /// so a future UI can surface it cheaply; nothing reads it today.
     @Published private(set) var lastDownloadURL: URL?
 
-    /// Set when the panel hides while this session wants a refresh on next
-    /// view (see `Favourite.reloadsOnFocus`).
-    var reloadsOnFocus = false
-    /// Host to cache this session's icon under. For a saved site this is the
-    /// favourite's host, so an icon discovered after a redirect (a login host,
-    /// say) is still found by the rail item that opened it.
+    /// Host to cache this session's icon under. A favourite-launched session
+    /// uses the shortcut's host so redirects do not lose its icon.
     var iconHost: String?
-    private var needsReloadOnNextAppearance = false
 
     private var progressObserver: NSKeyValueObservation?
     private var titleObserver: NSKeyValueObservation?
@@ -68,11 +59,9 @@ final class WebSession: NSObject, ObservableObject {
 
     init(
         kind: SessionKind,
-        dataStore: WKWebsiteDataStore,
-        userAgentMode: UserAgentMode = .desktop
+        dataStore: WKWebsiteDataStore
     ) {
         self.id = kind
-        self.userAgentMode = userAgentMode
 
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = dataStore
@@ -88,7 +77,6 @@ final class WebSession: NSObject, ObservableObject {
         let webView = WKWebView(frame: .zero, configuration: configuration)
         webView.allowsBackForwardNavigationGestures = true
         webView.allowsMagnification = true
-        webView.customUserAgent = userAgentMode.customUserAgent
         // Keeps the area around a short page in step with the panel instead
         // of flashing plain white inside a dark surface.
         webView.underPageBackgroundColor = .clear
@@ -196,39 +184,6 @@ final class WebSession: NSObject, ObservableObject {
     var displayHost: String {
         guard let host = currentURL?.host else { return "" }
         return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
-    }
-
-    // MARK: - Appearance lifecycle
-
-    /// Called when this session becomes the visible one. Honours
-    /// reload-on-focus without ever reloading a page the user is looking at.
-    func didBecomeVisible() {
-        guard needsReloadOnNextAppearance else { return }
-        needsReloadOnNextAppearance = false
-        reload()
-    }
-
-    /// Called when this session is hidden (panel hidden or another session
-    /// selected). Media is paused so audio does not keep playing from an
-    /// invisible panel.
-    func didBecomeHidden(pausingMedia: Bool) {
-        if reloadsOnFocus {
-            needsReloadOnNextAppearance = true
-        }
-        if pausingMedia {
-            pauseMedia()
-        }
-    }
-
-    // MARK: - User agent
-
-    func setUserAgentMode(_ mode: UserAgentMode, reloading: Bool = true) {
-        guard mode != userAgentMode else { return }
-        userAgentMode = mode
-        webView.customUserAgent = mode.customUserAgent
-        if reloading, webView.url != nil {
-            reload()
-        }
     }
 
     // MARK: - Zoom

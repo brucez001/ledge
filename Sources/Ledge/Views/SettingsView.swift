@@ -6,17 +6,21 @@ import SwiftUI
 struct SettingsView: View {
     @ObservedObject var controller: PanelController
     @ObservedObject private var preferences: Preferences
-    let hotkeyRegistered: Bool
+    let unavailableShortcuts: [GlobalShortcut]
 
-    init(controller: PanelController, hotkeyRegistered: Bool) {
+    init(controller: PanelController, unavailableShortcuts: [GlobalShortcut]) {
         self.controller = controller
         self.preferences = controller.preferences
-        self.hotkeyRegistered = hotkeyRegistered
+        self.unavailableShortcuts = unavailableShortcuts
     }
 
     var body: some View {
         TabView {
-            GeneralSettingsTab(controller: controller, preferences: preferences, hotkeyRegistered: hotkeyRegistered)
+            GeneralSettingsTab(
+                controller: controller,
+                preferences: preferences,
+                unavailableShortcuts: unavailableShortcuts
+            )
                 .tabItem { Label("General", systemImage: "gearshape") }
 
             ShortcutsSettingsTab()
@@ -37,7 +41,7 @@ struct SettingsView: View {
 private struct GeneralSettingsTab: View {
     @ObservedObject var controller: PanelController
     @ObservedObject var preferences: Preferences
-    let hotkeyRegistered: Bool
+    let unavailableShortcuts: [GlobalShortcut]
     @State private var launchAtLoginEnabled = LoginItem.isEnabled
 
     var body: some View {
@@ -78,10 +82,13 @@ private struct GeneralSettingsTab: View {
 
             Section("Edge reveal") {
                 Toggle("Reveal on hover at the screen edge", isOn: $preferences.edgeTriggerEnabled)
+                Text("\(GlobalShortcut.toggleEdgeReveal.displayName) turns this on or off from anywhere, without opening a menu.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
 
-                if !hotkeyRegistered {
+                ForEach(unavailableShortcuts, id: \.self) { shortcut in
                     Label(
-                        "⇧⌘Space could not be registered as a global shortcut -- another app may already use it.",
+                        "\(shortcut.displayName) could not be registered as a global shortcut -- another app may already use it.",
                         systemImage: "exclamationmark.triangle.fill"
                     )
                     .foregroundStyle(.orange)
@@ -144,14 +151,15 @@ private struct ShortcutsSettingsTab: View {
 
     // Kept in sync by hand with `KeyCommandHandler`'s mapping.
     private let shortcuts: [Shortcut] = [
-        .init(keys: "⇧⌘Space", action: "Show or hide the panel"),
-        .init(keys: "⌘1 – ⌘9", action: "Open the Nth favourite"),
+        .init(keys: GlobalShortcut.togglePanel.displayName, action: "Show or hide the panel"),
+        .init(keys: GlobalShortcut.toggleEdgeReveal.displayName, action: "Turn reveal on edge hover on or off"),
+        .init(keys: "⌘1 – ⌘9", action: "Select the Nth session in the sidebar, counting from the top"),
         .init(keys: "⌘0", action: "Reset zoom while browsing a site, else go home"),
         .init(keys: "⇧⌘H", action: "Go home"),
         .init(keys: "⌘L", action: "Focus the address or search field"),
         .init(keys: "⌘R", action: "Reload the current site"),
         .init(keys: "⌘F", action: "Show or hide find-in-page"),
-        .init(keys: "⌘T", action: "Open a new tab"),
+        .init(keys: "⌘T", action: "Open a new session"),
         .init(keys: "⌘[  /  ⌘←", action: "Back"),
         .init(keys: "⌘]  /  ⌘→", action: "Forward"),
         .init(keys: "⌘+  /  ⌘=", action: "Zoom in"),
@@ -159,7 +167,7 @@ private struct ShortcutsSettingsTab: View {
         .init(keys: "⇧⌘C", action: "Copy the current page's URL"),
         .init(keys: "⇧⌘O", action: "Open the current page in your default browser"),
         .init(keys: "Esc", action: "Close find-in-page, else leave a focused text field, else pass through to the page, else go home, else hide the panel"),
-        .init(keys: "⌘W", action: "Close the current tab; never closes a saved site's session or the panel")
+        .init(keys: "⌘W", action: "Close the current session; never removes its Home favourite or closes the panel")
     ]
 
     var body: some View {
@@ -205,10 +213,10 @@ private struct PrivacySettingsTab: View {
             }
 
             Section("Memory") {
-                LabeledContent("Live sessions") {
+                LabeledContent("Open sessions") {
                     Text("\(sessionManager.liveSessionCount)")
                 }
-                Button("Close Live Sessions") {
+                Button("Close All Sessions") {
                     // Routes through the controller (not the session
                     // manager directly) so a browser-mode destination
                     // doesn't end up pointing at a session that no longer

@@ -1,22 +1,13 @@
 import AppKit
 import SwiftUI
 
-/// Add-favourite flow: a required address, an optional name that defaults
-/// to the domain, and the desktop/mobile + reload-on-shown options a site
-/// might need from the moment it's added (rather than a separate trip to
-/// the favourites manager immediately afterwards).
+/// Adds a Home shortcut with a required address and optional display name.
 struct AddFavouriteSheet: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject var store: FavouritesStore
-    /// Called with the newly added site so the caller can open it straight
-    /// away -- adding a site is almost always immediately followed by wanting
-    /// to look at it.
-    var onAdded: ((Favourite) -> Void)?
 
     @State private var address = ""
     @State private var name = ""
-    @State private var userAgentMode: UserAgentMode = .desktop
-    @State private var reloadsOnFocus = false
     @State private var clipboardSuggestion: String?
     @FocusState private var addressFocused: Bool
 
@@ -80,17 +71,6 @@ struct AddFavouriteSheet: View {
             )
             .textFieldStyle(.roundedBorder)
 
-            Picker("Site type", selection: $userAgentMode) {
-                ForEach(UserAgentMode.allCases) { mode in
-                    Label(mode.title, systemImage: mode.symbolName).tag(mode)
-                }
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-
-            Toggle("Reload when shown", isOn: $reloadsOnFocus)
-                .help("Reload this site whenever it becomes visible again -- handy for dashboards.")
-
             HStack {
                 Spacer()
                 Button("Cancel", role: .cancel) { dismiss() }
@@ -147,14 +127,7 @@ struct AddFavouriteSheet: View {
     private func addFavourite() {
         let trimmedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let finalName = trimmedName.isEmpty ? defaultName : trimmedName
-        let favourite = store.add(name: finalName, address: normalizedAddress)
-        if userAgentMode != .desktop {
-            store.setUserAgentMode(userAgentMode, for: favourite)
-        }
-        if reloadsOnFocus {
-            store.setReloadsOnFocus(true, for: favourite)
-        }
+        store.add(name: finalName, address: normalizedAddress)
         dismiss()
-        onAdded?(store.favourite(withID: favourite.id) ?? favourite)
     }
 }

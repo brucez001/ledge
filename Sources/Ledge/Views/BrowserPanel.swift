@@ -149,6 +149,7 @@ struct BrowserToolbar: View {
     @Binding var isEditingAddress: Bool
 
     @State private var addressText: String = ""
+    @State private var pendingFavouriteRemoval: Favourite?
 
     var body: some View {
         HStack(spacing: 8) {
@@ -199,6 +200,9 @@ struct BrowserToolbar: View {
             // text the user is actively editing.
             guard !isEditingAddress, let newValue else { return }
             addressText = newValue.absoluteString
+        }
+        .confirmFavouriteRemoval($pendingFavouriteRemoval) {
+            controller.removeFavourite($0)
         }
     }
 
@@ -276,8 +280,17 @@ struct BrowserToolbar: View {
 
         Button("Copy address") { session.copyCurrentURL() }
         Button("Open in default browser") { session.openInDefaultBrowser() }
+        Button("Duplicate") {
+            guard let url = session.currentURL else { return }
+            controller.openInNewSession(url, iconHost: session.iconHost)
+        }
+        .disabled(session.currentURL == nil)
 
-        if controller.canAddCurrentPageToFavourites {
+        if let favourite = controller.activeFavourite {
+            Button(FavouriteRemoval.menuTitle, role: .destructive) {
+                pendingFavouriteRemoval = favourite
+            }
+        } else if controller.canAddCurrentPageToFavourites {
             Button("Add to Favourites") { controller.addCurrentPageToFavourites() }
         }
 
@@ -285,25 +298,6 @@ struct BrowserToolbar: View {
 
         Button("Find…") { controller.toggleFindBar() }
             .keyboardShortcut("f", modifiers: [.command])
-
-        Divider()
-
-        if let favourite = controller.activeFavourite {
-            Button(favourite.resolvedUserAgentMode.toggled.title) {
-                controller.setUserAgentMode(favourite.resolvedUserAgentMode.toggled, for: favourite)
-            }
-            Toggle(
-                "Reload when shown",
-                isOn: Binding(
-                    get: { favourite.resolvedReloadsOnFocus },
-                    set: { controller.setReloadsOnFocus($0, for: favourite) }
-                )
-            )
-        } else {
-            Button(session.userAgentMode.toggled.title) {
-                session.setUserAgentMode(session.userAgentMode.toggled)
-            }
-        }
 
         Divider()
 
@@ -315,10 +309,8 @@ struct BrowserToolbar: View {
 
         Button("Pause media") { session.pauseMedia() }
 
-        if controller.activeFavourite != nil {
-            Button("Close live session", role: .destructive) {
-                controller.closeActiveSession()
-            }
+        Button("Close Session", role: .destructive) {
+            controller.closeActiveSession()
         }
     }
 }

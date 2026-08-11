@@ -3,7 +3,6 @@ import SwiftUI
 struct LauncherHome: View {
     @ObservedObject var controller: PanelController
     @ObservedObject var favourites: FavouritesStore
-    @ObservedObject var sessionManager: SessionManager
     @ObservedObject var preferences: Preferences
 
     @State private var searchText = ""
@@ -69,7 +68,6 @@ struct LauncherHome: View {
                         ForEach(favourites.items) { item in
                             FavouriteTile(
                                 controller: controller,
-                                sessionManager: sessionManager,
                                 item: item,
                                 isActive: controller.destination == .favourite(item.id)
                             )
@@ -92,15 +90,27 @@ struct LauncherHome: View {
             searchFocused = false
         }
         .onChange(of: controller.homeFocusToken) { _, _ in
-            guard controller.showsStartPage else { return }
-            searchFocused = true
+            requestSearchFocus()
         }
         .task {
-            guard controller.showsStartPage else { return }
-            searchFocused = true
+            requestSearchFocus()
         }
         .sheet(isPresented: $isShowingFavouritesManager) {
             FavouritesManagerSheet(controller: controller)
+        }
+    }
+
+    /// A hidden home view can retain `true` in its `FocusState` after the
+    /// browser takes over. Setting the same value again when a new blank tab
+    /// is selected therefore does not always send a fresh first-responder
+    /// request. Bounce the state, then reclaim focus on the next run-loop turn
+    /// after the home view is visible again.
+    private func requestSearchFocus() {
+        guard controller.showsStartPage else { return }
+        searchFocused = false
+        DispatchQueue.main.async {
+            guard controller.showsStartPage else { return }
+            searchFocused = true
         }
     }
 
@@ -236,8 +246,6 @@ struct LauncherHome: View {
                 .font(.system(size: 16, weight: .semibold, design: .rounded))
                 .foregroundStyle(Theme.ink)
 
-            // The rail deliberately carries only panel controls, so the copy
-            // must point at the home grid instead of promising rail icons.
             Text("Add sites you visit often for one-click access from this screen.")
                 .font(.system(size: 13, weight: .regular))
                 .foregroundStyle(Theme.inkSecondary)
@@ -299,8 +307,7 @@ private struct FavouritesManagerSheet: View {
     }
 }
 
-/// One editable row in the favourites manager: inline rename, per-site
-/// desktop/mobile + reload-on-shown toggles, open, and delete.
+/// One editable Home shortcut: rename, open, or remove it.
 private struct FavouriteManagerRow: View {
     @ObservedObject var controller: PanelController
     let favourite: Favourite
@@ -312,62 +319,33 @@ private struct FavouriteManagerRow: View {
     @State private var isConfirmingRemoval = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 10) {
-                FaviconView(host: favourite.host, size: 22)
-                    .frame(width: 22, height: 22)
+        HStack(spacing: 10) {
+            FaviconView(host: favourite.host, size: 22)
+                .frame(width: 22, height: 22)
 
-                RenamableNameField(initialName: favourite.name) { newName in
-                    controller.favourites.rename(favourite, to: newName)
-                }
-
-                Spacer()
-
-                Button("Open") {
-                    controller.openFavourite(favourite)
-                    onOpen()
-                }
-                .buttonStyle(.borderless)
-
-                Button(role: .destructive) {
-                    isConfirmingRemoval = true
-                } label: {
-                    Image(systemName: "trash")
-                }
-                .buttonStyle(.borderless)
-                .help("Remove favourite")
-                .accessibilityLabel("Remove \(favourite.name)")
-                .confirmFavouriteRemoval(favourite, isPresented: $isConfirmingRemoval) {
-                    controller.removeFavourite(favourite)
-                }
+            RenamableNameField(initialName: favourite.name) { newName in
+                controller.favourites.rename(favourite, to: newName)
             }
 
-            HStack(spacing: 14) {
-                Button {
-                    controller.setUserAgentMode(favourite.resolvedUserAgentMode.toggled, for: favourite)
-                } label: {
-                    Label(favourite.resolvedUserAgentMode.title, systemImage: favourite.resolvedUserAgentMode.symbolName)
-                        .font(.caption)
-                }
-                .buttonStyle(.plain)
-                .foregroundStyle(Theme.inkSecondary)
-                .help("Switch between desktop and mobile site")
+            Spacer()
 
-                Toggle(
-                    "Reload when shown",
-                    isOn: Binding(
-                        get: { favourite.resolvedReloadsOnFocus },
-                        set: { controller.setReloadsOnFocus($0, for: favourite) }
-                    )
-                )
-                .toggleStyle(.checkbox)
-                .font(.caption)
-                .foregroundStyle(Theme.inkSecondary)
-                .help("Reload this site whenever it becomes visible again")
-
-                Spacer()
+            Button("Open") {
+                controller.openFavourite(favourite)
+                onOpen()
             }
-            .padding(.leading, 32)
+            .buttonStyle(.borderless)
+
+            Button(role: .destructive) {
+                isConfirmingRemoval = true
+            } label: {
+                Image(systemName: "trash")
+            }
+            .buttonStyle(.borderless)
+            .help("Remove favourite")
+            .accessibilityLabel("Remove \(favourite.name)")
+            .confirmFavouriteRemoval(favourite, isPresented: $isConfirmingRemoval) {
+                controller.removeFavourite(favourite)
+            }
         }
         .padding(.vertical, 4)
     }

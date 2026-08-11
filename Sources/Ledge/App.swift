@@ -12,7 +12,7 @@ struct LedgeApp: App {
         Settings {
             SettingsView(
                 controller: appDelegate.panelController,
-                hotkeyRegistered: appDelegate.isHotkeyRegistered
+                unavailableShortcuts: appDelegate.unavailableShortcuts
             )
         }
     }
@@ -30,9 +30,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private let hasLaunchedBeforeKey = "ledge.hasLaunchedBefore"
 
-    /// Surfaced to Settings so it can warn if ⇧⌘Space could not be
-    /// registered (e.g. another app already owns the combination).
-    var isHotkeyRegistered: Bool { hotkeyManager?.isRegistered ?? true }
+    /// Surfaced to Settings so it can warn about any global shortcut that
+    /// could not be registered (e.g. another app already owns it).
+    var unavailableShortcuts: [GlobalShortcut] { hotkeyManager?.unavailableShortcuts ?? [] }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         // Accessory posture: no Dock icon, no app-switcher entry. The panel
@@ -57,12 +57,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             panelController.prepareHidden()
         }
 
-        hotkeyManager = HotkeyManager { [weak self] in
+        let hotkeyManager = HotkeyManager()
+        self.hotkeyManager = hotkeyManager
+        hotkeyManager.register(.togglePanel) { [weak self] in
             Task { @MainActor in
                 self?.panelController.toggleVisibility()
             }
         }
-        hotkeyManager?.register()
+        // Deliberately global rather than panel-local: the reason to reach
+        // for it is that the panel is hidden and about to be revealed by an
+        // accidental edge brush in front of an audience.
+        hotkeyManager.register(.toggleEdgeReveal) { [weak self] in
+            Task { @MainActor in
+                self?.panelController.preferences.edgeTriggerEnabled.toggle()
+            }
+        }
 
         // Replaces the previous ad-hoc Esc-only local monitor: every
         // keyboard shortcut now lives in one place (see `KeyCommandHandler`).

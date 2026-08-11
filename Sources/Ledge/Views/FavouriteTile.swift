@@ -3,14 +3,11 @@ import UniformTypeIdentifiers
 
 struct FavouriteTile: View {
     @ObservedObject var controller: PanelController
-    @ObservedObject var sessionManager: SessionManager
     let item: Favourite
     let isActive: Bool
 
     @State private var isHovering = false
     @State private var isConfirmingRemoval = false
-
-    private var hasSession: Bool { sessionManager.hasSession(forFavouriteID: item.id) }
 
     var body: some View {
         Button {
@@ -60,8 +57,7 @@ struct FavouriteTile: View {
         .contextMenu {
             FavouriteMenuItems(
                 controller: controller,
-                item: item,
-                hasSession: hasSession
+                item: item
             ) {
                 isConfirmingRemoval = true
             }

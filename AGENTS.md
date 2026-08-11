@@ -10,11 +10,16 @@ Preserve the core product contract:
 
 - local-only: no server, account, analytics, telemetry, payment, or licence flow;
 - no third-party runtime dependencies without explicit approval;
-- saved sites keep persistent `WKWebView` sessions until the user closes them;
-- transient tabs are not restored across launches;
+- the rail contains open sessions only; every rail item shares the same close,
+  menu, reordering, and keyboard behaviour;
+- favourites are Home shortcuts only: adding or removing one must not create,
+  close, or otherwise change an already-open session;
+- open sessions keep their `WKWebView` until the user closes them, and no
+  sessions are restored across launches;
 - the app remains an accessory app with no Dock or app-switcher presence;
 - outside display edges may reveal the panel; interior multi-display seams may not;
-- `⌘W` may close a transient tab, but never a saved site, panel, or app.
+- `⌘W` closes the current session, but never removes its Home favourite or
+  closes the panel or app.
 
 ## Commands
 
@@ -50,8 +55,8 @@ The generated app lives at `build/Ledge.app`.
 - Prefer small, purpose-specific types over adding responsibilities to
   `PanelController`.
 - Keep AppKit window/event behaviour separate from SwiftUI presentation.
-- Do not recreate a saved site's `WKWebView` merely because the panel hides or
-  another site is selected.
+- Do not recreate an open session's `WKWebView` merely because the panel hides
+  or another session is selected.
 - New persisted settings must use the `ledge.` key prefix and receive coverage
   for defaults, invalid stored values, and migration when applicable.
 - User-facing destructive actions must be explicit and confirmed.

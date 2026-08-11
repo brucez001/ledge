@@ -13,9 +13,9 @@
 </p>
 
 Ledge keeps the web apps you reach for all day — chat, music, dashboards,
-mail, documentation — one hover or hotkey away. Each saved site gets a warm,
-persistent WebKit session, so switching sites or hiding the panel does not
-discard its state.
+mail, documentation — one hover or hotkey away. Open sites keep warm WebKit
+sessions, so switching between them or hiding the panel does not discard their
+state. Favourites stay on Home as shortcuts you can reopen whenever you need.
 
 No server. No account. No telemetry. No third-party dependencies.
 
@@ -28,14 +28,14 @@ No server. No account. No telemetry. No third-party dependencies.
 
 - **Lives on a screen edge** — dock left or right and reveal by edge hover or
   the global **⇧⌘Space** shortcut.
-- **Keeps sites warm** — saved sites retain their `WKWebView` sessions while
-  hidden or inactive, allowing media and long-running pages to continue.
-- **Fast site rail** — switch, reorder, rename, reload, pin, or close sessions
-  without returning to a browser window.
-- **Transient tabs** — open one-off pages with **⌘T** without adding them to
-  your saved sites.
+- **Keeps sessions warm** — open sites retain their `WKWebView` while hidden
+  or inactive, allowing media and long-running pages to continue.
+- **Consistent session rail** — every open site shares the same switching,
+  reordering, favourite, and close behaviour.
+- **Home favourites** — keep frequently used sites as shortcuts without
+  changing the behaviour of an already-open session.
 - **Focused browser controls** — an auto-hiding toolbar, omnibox, find in page,
-  zoom, downloads, desktop/mobile user agents, and external-app links.
+  zoom, downloads, and external-app links.
 - **Multi-display aware** — follows the pointer by default, ignores interior
   display seams, and recovers when a display is disconnected.
 - **Native and private** — built with SwiftUI, AppKit, and WebKit; settings,
@@ -117,11 +117,11 @@ Scripts/dev-check.sh
 
 ## Using Ledge
 
-1. Open Ledge and add a website from the home screen.
+1. Open Ledge and add a favourite shortcut from the home screen.
 2. Move the pointer to the docked screen edge, or press **⇧⌘Space**, to reveal
    the panel.
-3. Select saved sites from the rail. Their live sessions remain loaded when you
-   switch away or hide the panel.
+3. Open a favourite from Home, or type an address. Open sessions appear in the
+   rail and remain loaded when you switch away or hide the panel.
 4. Drag the panel across the display midpoint to dock it on the opposite edge.
 5. Use the pin control to keep the panel open, or leave auto-hide enabled so it
    retreats when you click elsewhere.
@@ -130,55 +130,42 @@ Only outside edges of a multi-display desktop respond to hover. An interior
 boundary is a display seam, so Ledge deliberately does not arm it; the global
 hotkey can still reveal Ledge on the display under the pointer.
 
-Edge hover can be turned off at any time from the menu-bar item's **Reveal on
-Edge Hover** entry, or in Settings. This is handy before sharing your screen: the
-panel then only appears when you ask for it with **⇧⌘Space**, the menu bar, or a
-site chosen from the **Sites** submenu.
+Edge hover can be turned off at any time with the global **⌥⇧⌘E** shortcut, from
+the menu-bar item's **Reveal on Edge Hover** entry, or in Settings. This is handy
+before sharing your screen: the panel then only appears when you ask for it with
+**⇧⌘Space**, the menu bar, or a site chosen from the **Sites** submenu. While
+edge hover is off the menu-bar mark is dimmed, so the current state is visible
+without opening the menu.
 
-## Keyboard shortcuts
-
-| Shortcut | Action |
-| --- | --- |
-| ⇧⌘Space | Show or hide Ledge |
-| ⌘1 – ⌘9 | Open the corresponding saved site |
-| ⇧⌘H | Go home |
-| ⌘L | Focus the address or search field |
-| ⌘T | Open a transient tab |
-| ⌘W | Close the current transient tab |
-| ⌘R | Reload the current page |
-| ⌘F | Find in page |
-| ⌘[ / ⌘← | Back |
-| ⌘] / ⌘→ | Forward |
-| ⌘+ / ⌘= / ⌘- | Zoom in or out |
-| ⌘0 | Reset zoom while browsing; otherwise go home |
-| ⇧⌘C | Copy the current URL |
-| ⇧⌘O | Open the current page in the default browser |
-| Esc | Dismiss the current layer, return home, or hide the panel |
-
-`⌘W` never closes a saved site's live session, the panel, or the app.
+The full shortcut list lives in **Settings → Shortcuts**.
 
 ## Sites, sessions, and browsing
 
-Each saved site owns a persistent `WKWebView`. All web views share one WebKit
-data store, so a sign-in is available across Ledge, while each site's navigation
-and page state remain independent. Sites can use desktop or mobile user agents
-and optionally reload whenever they are shown.
+Home favourites are shortcuts: clicking one focuses its existing session, or
+opens a new session if it is not already in the rail. Adding or removing a
+favourite changes Home only; it never reloads or closes the page already open
+in the rail. Choose **Duplicate** from a rail item's menu, or from the
+browsing overflow menu, when you want two independent views of the same website:
+it opens the page you are looking at in a second session and leaves Home alone.
+On Home itself the same action reads **Open in New Session**, since a shortcut
+you have not opened yet has nothing to duplicate. A blank session also stays
+independent when you open a favourite that is already running elsewhere.
 
-Transient tabs are intentionally temporary and are not restored on the next
-launch. An empty transient tab is reused rather than allowing stacks of blank
-tabs, and it can be added to your favourites once it has navigated somewhere.
+Every rail item is an open session and offers the same actions: reload, copy
+address, open in the default browser, duplicating, reordering, adding or removing
+its Home favourite, and closing the session. Closing removes the rail row while
+leaving any favourite shortcut untouched. Pages are always requested as a desktop
+browser, since the panel is narrow enough that responsive sites already adapt.
 
-Right-clicking a tab in the rail offers the same actions a saved site does,
-wherever they make sense for something temporary: reload, desktop or mobile
-user agent, reload when shown, copy address, open in the default browser, and
-reordering.
+Rail items can be reordered by dragging, or with **Move Up** and **Move Down** in
+their menu. While dragging, an accent line shows exactly where the row will land;
+it disappears when releasing would change nothing.
 
-A gap separates the saved sites from the tabs in the rail, and it divides what
-dragging means. Dragged among the tabs, a tab is reordered. Dragged up across
-the gap onto the saved sites, it is kept as a favourite at exactly that
-position — the page carries on in the same web view rather than reloading.
-**Add to Favourites** in the tab's menu does the same thing, adding it to the
-end of the list.
+All open sessions share one WebKit data store, so sign-ins are available across
+Ledge while each session's navigation and page state remain independent.
+Sessions stay alive while the app is running but are not restored across
+launches. Website cookies remain available, so reopening a favourite does not
+normally require signing in again.
 
 The omnibox recognises normal URLs, ports, IP addresses, `localhost`, and local
 files. Other input is sent to the configured search engine: Google,
@@ -201,7 +188,7 @@ third-party fallback.
 
 Website cookies and sign-ins are stored by macOS WebKit. Favourites and
 preferences use `UserDefaults`; favicon data is cached under Application
-Support. Settings includes controls to close live sessions, clear caches, and
+Support. Settings includes controls to close all sessions, clear caches, and
 clear all website data.
 
 ## Deliberate scope

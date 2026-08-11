@@ -1,7 +1,7 @@
 import Foundation
 import UniformTypeIdentifiers
 
-/// The drag payload used to reorder saved sites.
+/// The drag payload used to reorder open rail sessions.
 ///
 /// It rides on plain text (which needs no declared custom type) but is
 /// prefixed, so a stray drop of text from another app cannot be mistaken for a
@@ -9,49 +9,49 @@ import UniformTypeIdentifiers
 /// recognisable rather than a bare UUID.
 enum SiteDragPayload {
     static let type = UTType.plainText
-    private static let sitePrefix = "ledge.site:"
-    private static let tabPrefix = "ledge.tab:"
+    private static let homeFavouritePrefix = "ledge.home-favourite:"
+    private static let railFavouritePrefix = "ledge.rail-favourite:"
+    private static let railTabPrefix = "ledge.rail-tab:"
 
     /// What is being dragged around the rail.
     enum Item: Equatable {
-        /// A saved site being reordered.
+        /// A session associated with a Home favourite.
         case site(UUID)
-        /// A transient tab being moved. Dropping it anywhere in the rail only
-        /// ever repositions it -- including above the saved sites, where it stays
-        /// a tab. Keeping it is the explicit "Add to Favourites".
+        /// An ordinary session with no Home favourite.
         case tab(UUID)
     }
 
     static func encode(_ id: UUID) -> String {
-        sitePrefix + id.uuidString
+        homeFavouritePrefix + id.uuidString
     }
 
-    static func encodeTab(_ id: UUID) -> String {
-        tabPrefix + id.uuidString
+    static func encodeRailFavourite(_ id: UUID) -> String {
+        railFavouritePrefix + id.uuidString
     }
 
-    /// Site-only decode, for the drop targets that can accept nothing else.
+    static func encodeRailTab(_ id: UUID) -> String {
+        railTabPrefix + id.uuidString
+    }
+
+    /// Home-only decode, so a rail session cannot reorder shortcut tiles.
     static func decode(_ string: String) -> UUID? {
-        guard case .site(let id) = decodeItem(string) else { return nil }
-        return id
+        let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix(homeFavouritePrefix) else { return nil }
+        return UUID(uuidString: String(trimmed.dropFirst(homeFavouritePrefix.count)))
     }
 
+    /// Rail-only decode, so a Home shortcut cannot be dragged into the open
+    /// session order before it has actually been opened.
     static func decodeItem(_ string: String) -> Item? {
         let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.hasPrefix(sitePrefix),
-           let id = UUID(uuidString: String(trimmed.dropFirst(sitePrefix.count))) {
+        if trimmed.hasPrefix(railFavouritePrefix),
+           let id = UUID(uuidString: String(trimmed.dropFirst(railFavouritePrefix.count))) {
             return .site(id)
         }
-        if trimmed.hasPrefix(tabPrefix),
-           let id = UUID(uuidString: String(trimmed.dropFirst(tabPrefix.count))) {
+        if trimmed.hasPrefix(railTabPrefix),
+           let id = UUID(uuidString: String(trimmed.dropFirst(railTabPrefix.count))) {
             return .tab(id)
         }
         return nil
     }
-}
-
-/// Where a dragged site would land: above or below the row being hovered.
-struct SiteDropInsertion: Equatable {
-    let targetID: UUID
-    let isBelow: Bool
 }

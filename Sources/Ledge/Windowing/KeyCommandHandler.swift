@@ -12,7 +12,7 @@ import WebKit
 /// separate Settings window (or any other app).
 ///
 /// Mapped shortcuts (kept in sync with `SettingsView`'s Shortcuts tab):
-///   ⌘1 … ⌘9   Open the Nth favourite
+///   ⌘1 … ⌘9   Select the Nth session in the rail, counting from the top
 ///   ⌘0        Reset zoom while browsing a site, else go home
 ///   ⇧⌘H       Go home (always)
 ///   ⌘L        Focus the address field (browser) / search field (home)
@@ -29,11 +29,8 @@ import WebKit
 ///             rather than navigating away from it; else, only when the
 ///             web view itself is focused, pass through untouched; else go
 ///             home from browser mode; else hide the panel from home.
-///   ⌘T        Open a new, empty transient tab
-///   ⌘W        Closes the current *transient tab* only. It is swallowed
-///             everywhere else. An accidental ⌘W must never cost you a warm
-///             session, so it can never close a saved site's session, the
-///             panel, or the app.
+///   ⌘T        Open a new, empty session
+///   ⌘W        Close the current session. Its Home favourite, if any, stays.
 @MainActor
 final class KeyCommandHandler {
     private let controller: PanelController
@@ -69,13 +66,11 @@ final class KeyCommandHandler {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let chars = event.charactersIgnoringModifiers?.lowercased() ?? ""
 
-        // ⌘W closes a transient tab -- expendable by design, and the muscle
-        // memory is universal -- but is otherwise swallowed, so it can never
-        // fall through and close a saved site's live session or the panel.
+        // Every rail row is a session, so ⌘W and ⇧⌘W close it by the same rule.
+        // The event is swallowed on Home too, preventing AppKit from closing
+        // the panel or app.
         if flags.contains(.command), chars == "w" {
-            if let tabID = controller.activeTabID {
-                controller.closeTab(tabID)
-            }
+            controller.performClose(controller.closeAction())
             return nil
         }
 
@@ -86,7 +81,7 @@ final class KeyCommandHandler {
         let isBrowserMode = !controller.showsStartPage
 
         if !shift, let digit = Int(chars), (1...9).contains(digit) {
-            controller.openFavourite(at: digit - 1)
+            controller.selectRailEntry(numbered: digit)
             return nil
         }
 

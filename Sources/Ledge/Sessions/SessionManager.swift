@@ -1,31 +1,28 @@
 import WebKit
 
-/// Owns one persistent `WKWebView`-backed session per favourite plus a
-/// single transient "browse" session, all sharing one website data store so
-/// logins/cookies are consistent across sessions. Sessions are created
-/// lazily on first use and never destroyed just because the user switched
-/// away or hid the panel.
+/// Owns the currently open `WKWebView`-backed sessions.
+///
+/// Every session has the same lifetime: it remains alive while the user
+/// switches away or hides the panel, and is destroyed only when explicitly
+/// closed. A session may be associated with a Home favourite, but favourites
+/// themselves do not own or restore sessions.
 @MainActor
 final class SessionManager: ObservableObject {
     @Published private(set) var sessions: [WebSession] = []
-    /// Assign through `setActiveSession(_:)` so visibility lifecycle hooks
-    /// (reload-on-focus) always run.
+    /// Assign through `setActiveSession(_:)` rather than directly.
     @Published private(set) var activeSessionID: SessionKind?
 
     private let dataStore = WKWebsiteDataStore.default()
     private var sessionsByKind: [SessionKind: WebSession] = [:]
 
-    /// Returns the favourite's existing session, or creates and starts one.
+    /// Returns the favourite's existing open session, or creates one.
     @discardableResult
     func session(forFavourite favourite: Favourite) -> WebSession {
         let kind = SessionKind.favourite(favourite.id)
         if let existing = sessionsByKind[kind] {
-            existing.reloadsOnFocus = favourite.resolvedReloadsOnFocus
-            existing.setUserAgentMode(favourite.resolvedUserAgentMode)
             return existing
         }
-        let session = makeSession(kind: kind, userAgentMode: favourite.resolvedUserAgentMode)
-        session.reloadsOnFocus = favourite.resolvedReloadsOnFocus
+        let session = makeSession(kind: kind)
         // Cache any icon this site declares under the favourite's own host, so
         // the rail item finds it even if the site redirects elsewhere to sign
         // the user in.
@@ -35,60 +32,37 @@ final class SessionManager: ObservableObject {
         return session
     }
 
-    /// Creates a fresh transient tab. Unlike a saved site there is no reuse:
-    /// pressing "new tab" is meant to give you somewhere new to go.
+    /// Creates a fresh ordinary session.
     @discardableResult
     func newTabSession() -> WebSession {
-        let session = makeSession(kind: .tab(UUID()), userAgentMode: .desktop)
+        let session = makeSession(kind: .tab(UUID()))
         register(session)
         return session
     }
 
-    /// Transient tabs in the order they were opened (`sessions` preserves
-    /// insertion order), for the rail.
+    /// Ordinary tabs in their current rail order.
     var tabSessions: [WebSession] {
         sessions.filter { $0.id.tabID != nil }
     }
 
-    /// The live tab order, which the rail projects its unified list onto.
-    /// In-memory only, matching the fact that tabs are not restored across
-    /// launches.
-    var tabOrder: [UUID] {
-        sessions.compactMap(\.id.tabID)
+    /// Every live session in rail order. In-memory only.
+    var sessionOrder: [SessionKind] {
+        sessions.map(\.id)
     }
 
-    /// Rewrites the tab slots of `sessions` in the given order, leaving the
-    /// saved-site sessions where they are.
-    func setTabOrder(_ order: [UUID]) {
-        let current = tabOrder
-        let reordered = order.filter { sessionsByKind[.tab($0)] != nil }
-        // A permutation, not merely the same length: a repeated id would
-        // otherwise install one session twice and drop another from `sessions`
-        // while leaving it live in `sessionsByKind`.
+    /// Reorders all live sessions after validating a true permutation.
+    func setSessionOrder(_ order: [SessionKind]) {
+        let current = sessionOrder
+        let reordered = order.filter { sessionsByKind[$0] != nil }
         guard Set(reordered) == Set(current), reordered.count == current.count else { return }
         guard reordered != current else { return }
-
-        var next = reordered.makeIterator()
-        var result: [WebSession] = []
-        result.reserveCapacity(sessions.count)
-        for session in sessions {
-            guard session.id.tabID != nil else {
-                result.append(session)
-                continue
-            }
-            guard let tabID = next.next(), let tab = sessionsByKind[.tab(tabID)] else { return }
-            result.append(tab)
-        }
-        sessions = result
+        sessions = reordered.compactMap { sessionsByKind[$0] }
     }
 
     /// Re-files a live session under a new identity, keeping its web view.
     ///
-    /// This is what makes "add this tab to the favourites" a *move* rather than a
-    /// copy: the tab you are looking at becomes the saved site, with the page,
-    /// its scroll position, and any form state intact. Creating a fresh
-    /// session for the new favourite and closing the tab would reload
-    /// everything and briefly run two web views for the same page.
+    /// Adding or removing a Home favourite only changes this association. The
+    /// page, scroll position, form state, rail position, and behaviour remain.
     func rekey(_ session: WebSession, to kind: SessionKind) {
         guard sessionsByKind[session.id] === session, sessionsByKind[kind] == nil else { return }
 
@@ -105,10 +79,6 @@ final class SessionManager: ObservableObject {
         sessions = sessions
     }
 
-    func hasSession(forFavouriteID id: UUID) -> Bool {
-        sessionsByKind[.favourite(id)] != nil
-    }
-
     func existingSession(for kind: SessionKind) -> WebSession? {
         sessionsByKind[kind]
     }
@@ -122,37 +92,14 @@ final class SessionManager: ObservableObject {
     /// keeping sessions warm is visible rather than mysterious.
     var liveSessionCount: Int { sessions.count }
 
-    /// Switches the visible session, running hide/show hooks on the way.
+    /// Switches the visible session. Sessions keep running while hidden, so
+    /// nothing is torn down, paused, or reloaded here.
     func setActiveSession(_ kind: SessionKind?) {
         guard kind != activeSessionID else { return }
-        if let previous = activeSessionID, let session = sessionsByKind[previous] {
-            session.didBecomeHidden(pausingMedia: false)
-        }
         activeSessionID = kind
-        if let kind, let session = sessionsByKind[kind] {
-            session.didBecomeVisible()
-        }
     }
 
-    /// Re-runs the visible session's appearance hook, used when the panel
-    /// itself is revealed without the active session changing.
-    func panelDidReveal() {
-        activeSession()?.didBecomeVisible()
-    }
-
-    func panelDidHide() {
-        activeSession()?.didBecomeHidden(pausingMedia: false)
-    }
-
-    /// Applies a favourite's stored preferences to its live session, if any.
-    func applyPreferences(from favourite: Favourite) {
-        guard let session = sessionsByKind[.favourite(favourite.id)] else { return }
-        session.reloadsOnFocus = favourite.resolvedReloadsOnFocus
-        session.setUserAgentMode(favourite.resolvedUserAgentMode)
-    }
-
-    /// Frees a session's `WKWebView`, e.g. when a favourite is removed or
-    /// the user asks to close a session to reclaim memory.
+    /// Frees a session's `WKWebView` when the user closes its rail row.
     func closeSession(kind: SessionKind) {
         guard let session = sessionsByKind.removeValue(forKey: kind) else { return }
         sessions.removeAll { $0.id == kind }
@@ -192,8 +139,8 @@ final class SessionManager: ObservableObject {
         )
     }
 
-    private func makeSession(kind: SessionKind, userAgentMode: UserAgentMode) -> WebSession {
-        WebSession(kind: kind, dataStore: dataStore, userAgentMode: userAgentMode)
+    private func makeSession(kind: SessionKind) -> WebSession {
+        WebSession(kind: kind, dataStore: dataStore)
     }
 
     private func register(_ session: WebSession) {
