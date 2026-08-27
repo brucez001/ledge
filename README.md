@@ -1,3 +1,5 @@
+
+
 <p align="center">
   <img src="Assets/AppIcon-256.png" width="128" height="128" alt="Ledge app icon">
 </p>
@@ -19,7 +21,8 @@ No server. No account. No telemetry. No third-party runtime dependencies.
 
 ## Demo
 
-https://github.com/user-attachments/assets/3896ddec-94e9-4f65-928d-9d827cd870df
+https://github.com/user-attachments/assets/0009b609-aa19-4cfa-9a0a-4fc8e9552779
+
 
 ## Features
 
