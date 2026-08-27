@@ -73,6 +73,15 @@ The generated app lives at `build/Ledge.app`.
   also build the app bundle and perform a manual macOS check.
 - Do not treat a successful `swift run` as proof of bundle-only behaviour.
 
+## Commit messages
+
+- Follow Conventional Commits: `<type>: <description>` or
+  `<type>(<scope>): <description>`.
+- Use types such as `feat`, `fix`, `docs`, `test`, `refactor`, `build`, `ci`,
+  and `chore`.
+- Keep the description concise, imperative, lowercase, and without a trailing
+  full stop.
+
 ## Repository hygiene
 
 - Do not commit `.build/`, `build/`, `DerivedData/`, user data, cookies, caches,
