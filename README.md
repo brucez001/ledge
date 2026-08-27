@@ -19,7 +19,7 @@ No server. No account. No telemetry. No third-party runtime dependencies.
 
 ## Demo
 
-[Watch the Ledge demo](Assets/Ledge-demo.mp4)
+https://github.com/user-attachments/assets/3896ddec-94e9-4f65-928d-9d827cd870df
 
 ## Features
 
