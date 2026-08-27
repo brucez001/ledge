@@ -12,3 +12,6 @@ DerivedData/
 
 # macOS
 .DS_Store
+
+# Local source for the README's GitHub-hosted demo
+Assets/Ledge-demo.mp4
