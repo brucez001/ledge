@@ -28,7 +28,8 @@ https://github.com/user-attachments/assets/3896ddec-94e9-4f65-928d-9d827cd870df
 - Resize the panel to suit your workflow.
 - Keep the panel open persistently when you need it.
 - Turn off reveal on edge hover when it becomes annoying.
-- Keep open sites alive in a shared session rail.
+- Save favourite sites for quick access.
+- Use keyboard shortcuts for quick access and navigation.
 
 ## Requirements
 
