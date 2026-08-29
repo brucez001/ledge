@@ -14,6 +14,19 @@
 #   --install Copy the app to ~/Applications/Ledge.app (replaces a prior
 #             local Ledge.app, if present).
 #
+# Environment overrides:
+#   APP_VERSION           CFBundleShortVersionString (default 0.1.0).
+#   APP_BUILD             CFBundleVersion (default: current timestamp).
+#   LEDGE_SIGN_IDENTITY   Codesigning identity. Defaults to "-" (ad-hoc).
+#                         Set to a "Developer ID Application: ..." identity
+#                         to produce a distributable, notarisable bundle;
+#                         this also enables the hardened runtime and a
+#                         secure timestamp.
+#   LEDGE_ENTITLEMENTS    Optional entitlements plist used when signing with
+#                         a real identity.
+#
+# Scripts/package-release.sh drives this script for signed releases.
+#
 # The resulting bundle is written to build/Ledge.app relative to the
 # repository root.
 
@@ -191,14 +204,37 @@ if [[ "${HAS_ASSET_CATALOG_ICON}" -eq 1 ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# 3. Ad-hoc code sign so macOS is happy launching a local build
+# 3. Code sign
+#
+# Ad-hoc by default, so a local build launches without Gatekeeper complaining.
+# With LEDGE_SIGN_IDENTITY set, sign for distribution instead: the hardened
+# runtime and a secure timestamp are both prerequisites for notarisation.
 # ---------------------------------------------------------------------------
 
+SIGN_IDENTITY="${LEDGE_SIGN_IDENTITY:--}"
+
 if command -v codesign >/dev/null 2>&1; then
-  echo "==> Ad-hoc signing ${APP_BUNDLE}"
-  codesign --force --sign - "${APP_BUNDLE}" || {
-    echo "warning: ad-hoc codesign failed; the app may show a Gatekeeper prompt on first launch." >&2
-  }
+  if [[ "${SIGN_IDENTITY}" == "-" ]]; then
+    echo "==> Ad-hoc signing ${APP_BUNDLE}"
+    codesign --force --sign - "${APP_BUNDLE}" || {
+      echo "warning: ad-hoc codesign failed; the app may show a Gatekeeper prompt on first launch." >&2
+    }
+  else
+    echo "==> Signing ${APP_BUNDLE} as ${SIGN_IDENTITY}"
+    CODESIGN_ARGS=(--force --options runtime --timestamp --sign "${SIGN_IDENTITY}")
+    if [[ -n "${LEDGE_ENTITLEMENTS:-}" ]]; then
+      if [[ ! -f "${LEDGE_ENTITLEMENTS}" ]]; then
+        echo "error: LEDGE_ENTITLEMENTS is set but ${LEDGE_ENTITLEMENTS} does not exist" >&2
+        exit 1
+      fi
+      CODESIGN_ARGS+=(--entitlements "${LEDGE_ENTITLEMENTS}")
+    fi
+    codesign "${CODESIGN_ARGS[@]}" "${APP_BUNDLE}"
+    codesign --verify --strict --verbose=2 "${APP_BUNDLE}"
+  fi
+elif [[ "${SIGN_IDENTITY}" != "-" ]]; then
+  echo "error: LEDGE_SIGN_IDENTITY is set but codesign is unavailable" >&2
+  exit 1
 fi
 
 echo "==> Built ${APP_BUNDLE}"
