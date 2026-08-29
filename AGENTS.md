@@ -37,6 +37,12 @@ Use `Scripts/build-local-app.sh --open` for behaviour that only works from an
 app bundle, including launch-at-login and camera/microphone permission prompts.
 The generated app lives at `build/Ledge.app`.
 
+`Scripts/package-release.sh` produces a distributable `build/Ledge-<version>.dmg`:
+it signs with a Developer ID certificate, notarises, and staples. Run
+`Scripts/package-release.sh --help` for options. Without Apple credentials,
+`--adhoc` exercises the packaging path but produces a bundle that is not
+distributable. Pushing a `v*` tag runs the same script in GitHub Actions.
+
 ## Source layout
 
 - `Sources/Ledge/App.swift` — app lifecycle and global controllers

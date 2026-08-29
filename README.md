@@ -14,10 +14,30 @@ their WebKit sessions while you switch sites or hide the panel.
 No server. No account. No telemetry. No third-party runtime dependencies.
 
 > [!NOTE]
-> Ledge is currently distributed as source code. There is no signed download or
+> Ledge is not yet signed with an Apple Developer ID, so downloads are unsigned
+> and macOS asks for an extra confirmation on first launch. There is no
 > automatic updater.
 
 https://github.com/user-attachments/assets/0009b609-aa19-4cfa-9a0a-4fc8e9552779
+
+## Download
+
+Download the latest `Ledge-<version>.dmg` from
+[Releases](https://github.com/brucez001/ledge/releases), open it, and drag Ledge
+to Applications.
+
+Because the build is unsigned, macOS blocks it the first time you open it:
+
+1. Open Ledge. macOS shows **"Ledge" Not Opened** and says it could not verify
+   the app. Click **Done**. Do not click *Move to Trash*, even though it is the
+   highlighted button.
+2. Go to **System Settings → Privacy & Security**.
+3. Scroll down to the message naming Ledge and click **Open Anyway**.
+4. Open Ledge again and confirm when prompted.
+
+You only need to do this once. macOS shows this warning for any app that has not
+been signed with an Apple Developer certificate. These steps will be removed once
+I obtain one. Building from source following the steps below also avoids them.
 
 ## Features
 
