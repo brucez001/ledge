@@ -1,0 +1,120 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to build (no v prefix), e.g. 0.1.0"
+        required: true
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: macos-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Show Swift toolchain
+        run: swift --version
+
+      - name: Run tests
+        run: swift test
+
+      - name: Check for signing credentials
+        id: creds
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${MACOS_CERTIFICATE}" ]]; then
+            echo "available=false" >> "${GITHUB_OUTPUT}"
+            echo "::notice::No signing secrets configured; skipping the signed release build."
+          else
+            echo "available=true" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - name: Import Developer ID certificate
+        if: steps.creds.outputs.available == 'true'
+        env:
+          MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          CERT_PATH="${RUNNER_TEMP}/certificate.p12"
+          KEYCHAIN_PATH="${RUNNER_TEMP}/build.keychain-db"
+
+          echo -n "${MACOS_CERTIFICATE}" | base64 --decode > "${CERT_PATH}"
+
+          security create-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+          security set-keychain-settings -lut 21600 "${KEYCHAIN_PATH}"
+          security unlock-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+          security import "${CERT_PATH}" \
+            -P "${MACOS_CERTIFICATE_PASSWORD}" \
+            -k "${KEYCHAIN_PATH}" \
+            -T /usr/bin/codesign \
+            -f pkcs12
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s -k "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}" >/dev/null
+          security list-keychain -d user -s "${KEYCHAIN_PATH}" login.keychain-db
+
+          rm -f "${CERT_PATH}"
+          security find-identity -v -p codesigning "${KEYCHAIN_PATH}"
+
+      - name: Write notarisation key
+        if: steps.creds.outputs.available == 'true'
+        env:
+          NOTARY_KEY_P8: ${{ secrets.NOTARY_KEY_P8 }}
+        run: |
+          set -euo pipefail
+          echo -n "${NOTARY_KEY_P8}" | base64 --decode > "${RUNNER_TEMP}/AuthKey.p8"
+
+      - name: Build, sign, notarise, and package
+        if: steps.creds.outputs.available == 'true'
+        env:
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          NOTARY_KEY_PATH="${RUNNER_TEMP}/AuthKey.p8" \
+            Scripts/package-release.sh \
+              ${{ github.event_name == 'workflow_dispatch' && format('--version {0}', inputs.version) || '' }}
+
+      - name: Publish GitHub Release
+        if: github.event_name == 'push' && steps.creds.outputs.available == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create "${GITHUB_REF_NAME}" \
+            build/Ledge-*.dmg \
+            --title "Ledge ${GITHUB_REF_NAME#v}" \
+            --generate-notes
+
+      - name: Upload artefact
+        if: github.event_name == 'workflow_dispatch' && steps.creds.outputs.available == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Ledge-dmg
+          path: build/Ledge-*.dmg
+
+      - name: Clean up keychain
+        if: always()
+        run: |
+          rm -f "${RUNNER_TEMP}/AuthKey.p8"
+          security delete-keychain "${RUNNER_TEMP}/build.keychain-db" || true
