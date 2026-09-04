@@ -18,6 +18,7 @@ import WebKit
 ///   ⌘L        Focus the address field (browser) / search field (home)
 ///   ⌘R        Reload the current site (browser mode only)
 ///   ⌘F        Show/hide find-in-page (browser mode only; a no-op on home)
+///   ⌘N        Open a new note window (works from the panel or a note window)
 ///   ⌘[ / ⌘←   Back (browser mode only)
 ///   ⌘] / ⌘→   Forward (browser mode only)
 ///   ⌘+ / ⌘=   Zoom in (browser mode only)
@@ -54,10 +55,29 @@ final class KeyCommandHandler {
     }
 
     private func handle(_ event: NSEvent) -> NSEvent? {
+        guard let window = event.window else { return event }
+
+        // Note windows have their own tiny shortcut surface: ⌘W saves and
+        // closes the note, ⌘N opens another one. Every other keystroke goes
+        // straight to the editor untouched.
+        if let noteWindow = window as? NoteWindow {
+            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
+            let chars = event.charactersIgnoringModifiers?.lowercased() ?? ""
+            if flags.contains(.command), chars == "w" {
+                controller.noteController.close(noteWindow)
+                return nil
+            }
+            if flags.contains(.command), chars == "n" {
+                controller.openNewNote()
+                return nil
+            }
+            return event
+        }
+
         // Local monitors see every keyDown in the app, including ones aimed
         // at the separate Settings window -- only our own floating panel's
         // shortcuts belong here.
-        guard event.window is LauncherPanel, controller.isPanelVisible else { return event }
+        guard window is LauncherPanel, controller.isPanelVisible else { return event }
 
         if event.keyCode == 53 {
             return handleEscape(event)
@@ -71,6 +91,11 @@ final class KeyCommandHandler {
         // the panel or app.
         if flags.contains(.command), chars == "w" {
             controller.performClose(controller.closeAction())
+            return nil
+        }
+
+        if flags.contains(.command), chars == "n" {
+            controller.openNewNote()
             return nil
         }
 

@@ -4,10 +4,21 @@ struct LauncherHome: View {
     @ObservedObject var controller: PanelController
     @ObservedObject var favourites: FavouritesStore
     @ObservedObject var preferences: Preferences
+    @ObservedObject private var noteController: NoteController
+    @ObservedObject private var noteStore: NoteStore
 
     @State private var searchText = ""
     @FocusState private var searchFocused: Bool
     @State private var isShowingFavouritesManager = false
+
+    init(controller: PanelController, favourites: FavouritesStore, preferences: Preferences) {
+        self.controller = controller
+        self.favourites = favourites
+        self.preferences = preferences
+        let notes = controller.noteController
+        self.noteController = notes
+        self.noteStore = notes.store
+    }
 
     private let columns = [
         GridItem(.adaptive(minimum: Theme.Metrics.tileSize, maximum: Theme.Metrics.tileSize), spacing: 20, alignment: .leading)
@@ -81,6 +92,8 @@ struct LauncherHome: View {
                     .padding(.top, 24)
                     .padding(.bottom, 40)
                 }
+
+                notesSection
             }
             .padding(.horizontal, 36)
         }
@@ -235,6 +248,65 @@ struct LauncherHome: View {
     }
 
     // MARK: - Empty state
+
+    /// The discoverable entry point for notes. With no notes yet this is a
+    /// slim "New note" button; once notes exist it becomes a titled grid of
+    /// tiles plus the same add affordance the favourites grid has.
+    @ViewBuilder
+    private var notesSection: some View {
+        if noteStore.notes.isEmpty {
+            Button(action: controller.openNewNote) {
+                HStack(spacing: 8) {
+                    Image(systemName: "note.text.badge.plus")
+                        .font(.system(size: 14, weight: .medium))
+                    Text("New note")
+                        .font(.system(size: 13, weight: .medium, design: .rounded))
+                    Spacer()
+                    Text("⌘N")
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .foregroundStyle(Theme.inkTertiary)
+                }
+                .padding(.horizontal, 16)
+                .frame(height: 38)
+                .background(
+                    Theme.card,
+                    in: RoundedRectangle(cornerRadius: Theme.Metrics.controlCornerRadius, style: .continuous)
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: Theme.Metrics.controlCornerRadius, style: .continuous)
+                        .stroke(Theme.hairline, lineWidth: 1)
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("New note (⌘N)")
+            .accessibilityLabel("Create a new note")
+            .padding(.top, 32)
+        } else {
+            HStack {
+                Text("Notes")
+                    .font(.system(size: 20, weight: .semibold, design: .rounded))
+                    .foregroundStyle(Theme.ink)
+                Text("\(noteStore.notes.count)")
+                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .foregroundStyle(Theme.inkTertiary)
+            }
+            .padding(.top, 44)
+
+            LazyVGrid(columns: columns, alignment: .leading, spacing: 16) {
+                ForEach(noteStore.notes) { note in
+                    NoteTile(
+                        note: note,
+                        isOpen: noteController.openNoteIDs.contains(note.id),
+                        open: { controller.openNote(note) }
+                    )
+                }
+                NewNoteTile(action: controller.openNewNote)
+            }
+            .padding(.top, 24)
+            .padding(.bottom, 40)
+        }
+    }
 
     private var emptyState: some View {
         VStack(spacing: 14) {

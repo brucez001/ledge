@@ -160,6 +160,7 @@ private struct ShortcutsSettingsTab: View {
         .init(keys: "⌘R", action: "Reload the current site"),
         .init(keys: "⌘F", action: "Show or hide find-in-page"),
         .init(keys: "⌘T", action: "Open a new session"),
+        .init(keys: "⌘N", action: "Open a new note window"),
         .init(keys: "⌘[  /  ⌘←", action: "Back"),
         .init(keys: "⌘]  /  ⌘→", action: "Forward"),
         .init(keys: "⌘+  /  ⌘=", action: "Zoom in"),
@@ -167,7 +168,7 @@ private struct ShortcutsSettingsTab: View {
         .init(keys: "⇧⌘C", action: "Copy the current page's URL"),
         .init(keys: "⇧⌘O", action: "Open the current page in your default browser"),
         .init(keys: "Esc", action: "Close find-in-page, else leave a focused text field, else pass through to the page, else go home, else hide the panel"),
-        .init(keys: "⌘W", action: "Close the current session; never removes its Home favourite or closes the panel")
+        .init(keys: "⌘W", action: "Close the current session or note window; never removes its Home favourite or closes the panel")
     ]
 
     var body: some View {

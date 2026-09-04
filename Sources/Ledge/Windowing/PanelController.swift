@@ -86,6 +86,7 @@ final class PanelController: NSObject, ObservableObject {
 
     let sessionManager = SessionManager()
     let favourites = FavouritesStore()
+    let noteController = NoteController()
     let preferences = Preferences.shared
 
     private var panel: NSPanel?
@@ -918,6 +919,18 @@ final class PanelController: NSObject, ObservableObject {
 
     func openAddFavourite() {
         isShowingAddFavourite = true
+    }
+
+    /// Opens a brand-new note window (⌘N / "New Note" / the Home tile).
+    /// Notes are local plain-text files, independent of the session manager
+    /// -- nothing web-related is created or touched.
+    func openNewNote() {
+        noteController.openNewNote()
+    }
+
+    /// Opens (or focuses) an existing note window from a Home tile.
+    func openNote(_ note: Note) {
+        noteController.open(note)
     }
 
     /// Promotes the page in the transient "browse" session into a permanent

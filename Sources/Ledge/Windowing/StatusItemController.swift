@@ -95,6 +95,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
 
         menu.addItem(.separator())
         menu.addItem(makeSitesItem())
+        menu.addItem(makeNotesItem())
         menu.addItem(.separator())
 
         let settingsItem = makeItem("Settings…", #selector(openSettings), key: ",")
@@ -152,6 +153,32 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         return sitesItem
     }
 
+    /// Notes are surfaced here as well as on Home because the menu bar is
+    /// the only always-visible surface of an accessory app: with the panel
+    /// hidden, this is how a saved note is reached without the hotkey.
+    private func makeNotesItem() -> NSMenuItem {
+        let notesItem = NSMenuItem(title: "Notes", action: nil, keyEquivalent: "")
+        let submenu = NSMenu(title: "Notes")
+
+        let newItem = NSMenuItem(title: "New Note…", action: #selector(openNewNote), keyEquivalent: "n")
+        newItem.keyEquivalentModifierMask = [.command]
+        newItem.target = self
+        submenu.addItem(newItem)
+
+        let notes = panelController.noteController.store.notes
+        if !notes.isEmpty {
+            submenu.addItem(.separator())
+            for note in notes {
+                let item = NSMenuItem(title: note.title, action: #selector(openSavedNote(_:)), keyEquivalent: "")
+                item.target = self
+                item.representedObject = note.id
+                submenu.addItem(item)
+            }
+        }
+        notesItem.submenu = submenu
+        return notesItem
+    }
+
     @objc private func toggleVisibility() {
         panelController.toggleVisibility()
     }
@@ -184,6 +211,22 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         // otherwise, while hidden, the site loads invisibly and the click
         // looks like it did nothing.
         panelController.revealAndOpen(favourite)
+    }
+
+    @objc private func openNewNote() {
+        // Opening a key window from inside a tracking menu needs the same
+        // tick-delay the Settings button uses.
+        DispatchQueue.main.async { [weak self] in
+            self?.panelController.openNewNote()
+        }
+    }
+
+    @objc private func openSavedNote(_ sender: NSMenuItem) {
+        guard let id = sender.representedObject as? UUID,
+              let note = panelController.noteController.store.note(withID: id) else { return }
+        DispatchQueue.main.async { [weak self] in
+            self?.panelController.openNote(note)
+        }
     }
 
     @objc private func openSettings() {

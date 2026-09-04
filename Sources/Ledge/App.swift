@@ -79,6 +79,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         keyCommandHandler?.install()
     }
 
+    func applicationWillTerminate(_ notification: Notification) {
+        // Notes autosave on a debounce; flush any pending draft so quitting
+        // mid-keystroke can never lose the last few characters.
+        panelController.noteController.saveAllOpen()
+    }
+
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         panelController.show()
         return true

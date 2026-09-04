@@ -119,6 +119,9 @@ struct AppRail: View {
             Button("Add Favourite…") {
                 controller.openAddFavourite()
             }
+            Button("New Note…") {
+                controller.openNewNote()
+            }
 
             Divider()
 

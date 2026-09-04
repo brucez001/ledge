@@ -47,6 +47,7 @@ I obtain one. Building from source following the steps below also avoids them.
 - Keep the panel open persistently when you need it.
 - Turn off reveal on edge hover when it becomes annoying.
 - Save favourite sites for quick access.
+- Take a quick note with **⌘N** — notes save locally as plain text.
 - Use keyboard shortcuts for quick access and navigation.
 
 ## Requirements
@@ -94,6 +95,8 @@ Privacy settings to disable that fallback.
 
 Website data is stored by macOS WebKit. Favourites and preferences stay in
 `UserDefaults`, and favicon data is cached in Application Support.
+Notes are saved as plain-text files under Application Support and never leave
+your Mac.
 
 Ledge is intentionally a focused edge browser, not a cloud-synced workspace or
 notification platform.
