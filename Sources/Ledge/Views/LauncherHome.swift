@@ -298,7 +298,8 @@ struct LauncherHome: View {
                     NoteTile(
                         note: note,
                         isOpen: noteController.openNoteIDs.contains(note.id),
-                        open: { controller.openNote(note) }
+                        open: { controller.openNote(note) },
+                        delete: { controller.deleteSavedNote(note) }
                     )
                 }
                 NewNoteTile(action: controller.openNewNote)

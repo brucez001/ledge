@@ -7,12 +7,23 @@ import SwiftUI
 struct AppRail: View {
     @ObservedObject var controller: PanelController
     @ObservedObject private var sessionManager: SessionManager
+    /// Observed directly, not read through `controller`: opening, closing,
+    /// or reordering a note tab only publishes on `NoteController`, and
+    /// SwiftUI skips re-evaluating this view's body while its own stored
+    /// values are unchanged. Without this the rail keeps a row for a note
+    /// tab that has already been closed.
+    @ObservedObject private var noteController: NoteController
+    /// Only needed for the row insert/remove animation, so the rail
+    /// follows the same speed setting as the rest of the panel.
+    @ObservedObject private var preferences: Preferences
     @State private var isHoveringOptions = false
     @StateObject private var drop = RailDropCoordinator()
 
     init(controller: PanelController) {
         self.controller = controller
         self.sessionManager = controller.sessionManager
+        self.noteController = controller.noteController
+        self.preferences = controller.preferences
     }
 
     private var pinSymbol: String {
@@ -26,6 +37,8 @@ struct AppRail: View {
     }
 
     private var entries: [RailEntry] { controller.railEntries }
+    private var sessionEntries: [RailEntry] { entries.filter { $0.noteID == nil } }
+    private var noteEntries: [RailEntry] { entries.filter { $0.noteID != nil } }
 
     private var dragHandle: some View {
         WindowDragHandle()
@@ -81,17 +94,33 @@ struct AppRail: View {
     private var sessions: some View {
         ScrollView(.vertical) {
             VStack(spacing: 0) {
-                ForEach(entries) { entry in
-                    row(for: entry)
-                }
+                VStack(spacing: 0) {
+                    ForEach(sessionEntries) { entry in
+                        row(for: entry)
+                    }
 
-                RailIconButton(
-                    systemName: "plus",
-                    label: "New session",
-                    tooltip: "New session (⌘T)",
-                    action: { controller.newTab() }
-                )
-                .padding(.top, entries.isEmpty ? 0 : 6)
+                    RailIconButton(
+                        systemName: "plus",
+                        label: "New session",
+                        tooltip: "New session (⌘T)",
+                        action: { controller.newTab() }
+                    )
+                    .padding(.top, sessionEntries.isEmpty ? 0 : 6)
+                }
+                .animation(preferences.animationSpeed.contentAnimation, value: sessionEntries)
+
+                if !noteEntries.isEmpty {
+                    Divider()
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 6)
+
+                    VStack(spacing: 0) {
+                        ForEach(noteEntries) { entry in
+                            row(for: entry)
+                        }
+                    }
+                    .animation(preferences.animationSpeed.contentAnimation, value: noteEntries)
+                }
             }
         }
         .scrollIndicators(.hidden)
@@ -100,17 +129,33 @@ struct AppRail: View {
 
     @ViewBuilder
     private func row(for entry: RailEntry) -> some View {
-        if let session = sessionManager.existingSession(for: entry.sessionKind) {
-            RailSessionButton(
-                controller: controller,
-                session: session,
-                drop: drop,
-                entry: entry,
-                isActive: sessionManager.activeSessionID == entry.sessionKind,
-                isBlank: entry.tabID.map(controller.blankTabIDs.contains) ?? false,
-                canMoveUp: entries.first != entry,
-                canMoveDown: entries.last != entry
-            )
+        switch entry {
+        case .note(let id):
+            if let tab = noteController.tab(for: id) {
+                RailNoteButton(
+                    controller: controller,
+                    tab: tab,
+                    drop: drop,
+                    entry: entry,
+                    isActive: controller.activeNoteID == id,
+                    canMoveUp: noteEntries.first != entry,
+                    canMoveDown: noteEntries.last != entry
+                )
+            }
+        case .favourite, .tab:
+            if let kind = entry.sessionKind,
+               let session = sessionManager.existingSession(for: kind) {
+                RailSessionButton(
+                    controller: controller,
+                    session: session,
+                    drop: drop,
+                    entry: entry,
+                    isActive: sessionManager.activeSessionID == kind,
+                    isBlank: entry.tabID.map(controller.blankTabIDs.contains) ?? false,
+                    canMoveUp: sessionEntries.first != entry,
+                    canMoveDown: sessionEntries.last != entry
+                )
+            }
         }
     }
 
@@ -121,6 +166,14 @@ struct AppRail: View {
             }
             Button("New Note…") {
                 controller.openNewNote()
+            }
+
+            // Only meaningful while a note is open, and the menu is where
+            // ⇧⌘P can be discovered without hovering the header. The item
+            // observes the tab itself, so its label follows the mode
+            // instead of going stale after a ⇧⌘P from the keyboard.
+            if let id = controller.activeNoteID, let tab = noteController.tab(for: id) {
+                NotePreviewMenuItem(tab: tab)
             }
 
             Divider()
@@ -164,6 +217,19 @@ struct AppRail: View {
         .onHover { isHoveringOptions = $0 }
         .help("More options")
         .accessibilityLabel("More options")
+    }
+}
+
+/// The rail menu's Markdown mode item, split out so it can observe the note
+/// tab and keep its label in step with ⇧⌘P.
+private struct NotePreviewMenuItem: View {
+    @ObservedObject var tab: NoteTab
+
+    var body: some View {
+        Button(tab.isPreviewing ? "Edit Markdown" : "Preview Markdown") {
+            tab.togglePreview()
+        }
+        .keyboardShortcut("p", modifiers: [.command, .shift])
     }
 }
 
@@ -216,22 +282,6 @@ private struct RailSessionButton: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(RailButtonBackgroundStyle(isHovering: isHovering, isSelected: isActive))
-        .overlay(alignment: .topTrailing) {
-            if isHovering {
-                Button {
-                    controller.closeSession(session.id)
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 11, weight: .semibold))
-                        .symbolRenderingMode(.palette)
-                        .foregroundStyle(Theme.ink, Theme.cardHover)
-                }
-                .buttonStyle(.plain)
-                .help("Close session")
-                .accessibilityLabel("Close session")
-                .offset(x: 3, y: -3)
-            }
-        }
         .onHover { isHovering = $0 }
         .help(tooltip)
         .accessibilityLabel(
@@ -244,12 +294,17 @@ private struct RailSessionButton: View {
             let payload = switch entry {
             case .favourite(let id): SiteDragPayload.encodeRailFavourite(id)
             case .tab(let id): SiteDragPayload.encodeRailTab(id)
+            case .note(let id): SiteDragPayload.encodeRailNote(id)
             }
             return NSItemProvider(object: payload as NSString)
         }
         .padding(.vertical, Theme.Metrics.railRowSpacing / 2)
-        .overlay(alignment: .top) { insertionLine(isBelow: false) }
-        .overlay(alignment: .bottom) { insertionLine(isBelow: true) }
+        .overlay(alignment: .top) {
+            RailInsertionLine(drop: drop, entry: entry, isBelow: false)
+        }
+        .overlay(alignment: .bottom) {
+            RailInsertionLine(drop: drop, entry: entry, isBelow: true)
+        }
         .onDrop(
             of: [SiteDragPayload.type],
             delegate: RailReorderDropDelegate(
@@ -259,6 +314,19 @@ private struct RailSessionButton: View {
                 rowHeight: Theme.Metrics.railRowHeight
             )
         )
+        // Applied last, so it sits *outside* `.onDrag` above: a draggable
+        // wrapper swallows mouse-down for the controls inside it, which is
+        // what stopped this ✕ from ever firing.
+        .overlay(alignment: .topTrailing) {
+            if isHovering {
+                RailCloseButton(
+                    tooltip: "Close session",
+                    label: "Close session",
+                    keepVisible: { isHovering = true },
+                    action: { controller.closeSession(session.id) }
+                )
+            }
+        }
         .contextMenu {
             RailSessionMenuItems(
                 controller: controller,
@@ -278,10 +346,120 @@ private struct RailSessionButton: View {
         }
     }
 
-    /// The drop indicator: a short accent bar sitting in the gap between rows,
-    /// shown only on the edge the dragged row will actually land against.
-    @ViewBuilder
-    private func insertionLine(isBelow: Bool) -> some View {
+}
+
+/// One open note tab. Behaves exactly like a session row: clicking
+/// selects it, the hover ✕ closes it (without deleting the file), and the
+/// context menu offers the same open / move / close actions, plus the
+/// note-only delete (a session has no file to remove).
+private struct RailNoteButton: View {
+    @ObservedObject var controller: PanelController
+    @ObservedObject var tab: NoteTab
+    @ObservedObject var drop: RailDropCoordinator
+    let entry: RailEntry
+    let isActive: Bool
+    let canMoveUp: Bool
+    let canMoveDown: Bool
+
+    @State private var isHovering = false
+    @State private var isConfirmingDelete = false
+
+    /// The Home tile's one-line peek, computed against the live editor
+    /// buffer so the card keeps up with typing rather than the last autosave.
+    private var preview: String {
+        var live = tab.note
+        live.body = tab.body
+        return live.preview
+    }
+
+    var body: some View {
+        Button {
+            controller.openNoteTab(tab.note.id)
+        } label: {
+            Image(systemName: "note.text")
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(isActive ? Color.accentColor : Theme.inkSecondary)
+                .frame(width: Theme.Metrics.railItemSize, height: Theme.Metrics.railItemSize)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(RailButtonBackgroundStyle(isHovering: isHovering, isSelected: isActive))
+        .onHover { isHovering = $0 }
+        // Every note shares one glyph, so the row needs a name on hover.
+        // Ledge's own card rather than `.help()`: see `RailHoverCard.swift`.
+        .railHoverCard(id: tab.note.id, title: tab.displayTitle, subtitle: preview, isShowing: isHovering)
+        .accessibilityLabel(isActive ? "Current note: \(tab.displayTitle)" : "Note: \(tab.displayTitle)")
+        .onDrag {
+            drop.begin(dragging: entry)
+            return NSItemProvider(object: SiteDragPayload.encodeRailNote(tab.note.id) as NSString)
+        }
+        .padding(.vertical, Theme.Metrics.railRowSpacing / 2)
+        .overlay(alignment: .top) {
+            RailInsertionLine(drop: drop, entry: entry, isBelow: false)
+        }
+        .overlay(alignment: .bottom) {
+            RailInsertionLine(drop: drop, entry: entry, isBelow: true)
+        }
+        .onDrop(
+            of: [SiteDragPayload.type],
+            delegate: RailReorderDropDelegate(
+                target: entry,
+                controller: controller,
+                drop: drop,
+                rowHeight: Theme.Metrics.railRowHeight
+            )
+        )
+        // Outside `.onDrag`, for the same reason as the session row: a
+        // control nested inside a draggable view never receives its click.
+        .overlay(alignment: .topTrailing) {
+            if isHovering {
+                RailCloseButton(
+                    tooltip: "Close note (the file is kept)",
+                    label: "Close note",
+                    keepVisible: { isHovering = true },
+                    action: { controller.closeNote(tab.note.id) }
+                )
+            }
+        }
+        .contextMenu {
+            Button("Open") { controller.openNoteTab(tab.note.id) }
+
+            Divider()
+
+            Button("Move Up") {
+                controller.moveRailEntry(entry, by: -1)
+            }
+            .disabled(!canMoveUp)
+            Button("Move Down") {
+                controller.moveRailEntry(entry, by: 1)
+            }
+            .disabled(!canMoveDown)
+
+            Divider()
+
+            Button("Close Note") { controller.closeNote(tab.note.id) }
+
+            Divider()
+
+            // The one note action that removes the file, so it reads and
+            // confirms exactly as it does on the Home tile.
+            Button(NoteDeletion.menuTitle, role: .destructive) {
+                isConfirmingDelete = true
+            }
+        }
+        .confirmNoteDeletion(title: tab.displayTitle, isPresented: $isConfirmingDelete) {
+            controller.deleteNote(tab.note.id)
+        }
+    }
+
+}
+
+/// The accent bar showing where a dragged rail item will land.
+private struct RailInsertionLine: View {
+    @ObservedObject var drop: RailDropCoordinator
+    let entry: RailEntry
+    let isBelow: Bool
+
+    var body: some View {
         if drop.showsLine(for: entry, isBelow: isBelow) {
             Capsule()
                 .fill(Color.accentColor)
@@ -330,6 +508,7 @@ private struct RailReorderDropDelegate: DropDelegate {
             let dragged: RailEntry = switch item {
             case .site(let id): .favourite(id)
             case .tab(let id): .tab(id)
+            case .note(let id): .note(id)
             }
             Task { @MainActor in
                 controller.moveRailEntry(dragged, relativeTo: target, isBelow: isBelow)
@@ -346,7 +525,11 @@ private struct RailReorderDropDelegate: DropDelegate {
         let controller = controller
         let drop = drop
         Task { @MainActor in
-            drop.pointerMoved(over: target, isBelow: isBelow, in: controller.railEntries)
+            drop.pointerMoved(
+                over: target,
+                isBelow: isBelow,
+                in: controller.railGroup(containing: target)
+            )
         }
     }
 }
@@ -373,6 +556,40 @@ private struct RailIconButton: View {
         .onHover { isHovering = $0 }
         .help(tooltip)
         .accessibilityLabel(label)
+    }
+}
+
+/// The hover ✕ shared by every rail row.
+///
+/// Must be attached *after* the row's `.onDrag`: a control nested inside a
+/// draggable view never sees its own mouse-down on macOS. `keepVisible`
+/// lets the row hold its hover state while the pointer is on the badge,
+/// which overhangs the row's corner -- otherwise the ✕ can vanish out from
+/// under the click that was aimed at it.
+private struct RailCloseButton: View {
+    let tooltip: String
+    let label: String
+    let keepVisible: () -> Void
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "xmark.circle.fill")
+                .font(.system(size: 11, weight: .semibold))
+                .symbolRenderingMode(.palette)
+                .foregroundStyle(Theme.ink, Theme.cardHover)
+                // A 11pt glyph is a poor target; the frame gives it one
+                // without making the badge look bigger.
+                .frame(width: 18, height: 18)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hovering in
+            if hovering { keepVisible() }
+        }
+        .help(tooltip)
+        .accessibilityLabel(label)
+        .offset(x: 4, y: -2)
     }
 }
 

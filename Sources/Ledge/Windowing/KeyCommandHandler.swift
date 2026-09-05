@@ -12,13 +12,15 @@ import WebKit
 /// separate Settings window (or any other app).
 ///
 /// Mapped shortcuts (kept in sync with `SettingsView`'s Shortcuts tab):
-///   ⌘1 … ⌘9   Select the Nth session in the rail, counting from the top
+///   ⌘1 … ⌘9   Select the Nth open item in the rail, counting from the top
 ///   ⌘0        Reset zoom while browsing a site, else go home
 ///   ⇧⌘H       Go home (always)
 ///   ⌘L        Focus the address field (browser) / search field (home)
 ///   ⌘R        Reload the current site (browser mode only)
 ///   ⌘F        Show/hide find-in-page (browser mode only; a no-op on home)
-///   ⌘N        Open a new note window (works from the panel or a note window)
+///   ⌘N        Open a new note as a tab in the panel
+///   ⇧⌘P       Swap the open note between preview and raw Markdown
+///   ⇧⌘L       Turn live Markdown rendering in the note editor on or off
 ///   ⌘[ / ⌘←   Back (browser mode only)
 ///   ⌘] / ⌘→   Forward (browser mode only)
 ///   ⌘+ / ⌘=   Zoom in (browser mode only)
@@ -31,7 +33,8 @@ import WebKit
 ///             web view itself is focused, pass through untouched; else go
 ///             home from browser mode; else hide the panel from home.
 ///   ⌘T        Open a new, empty session
-///   ⌘W        Close the current session. Its Home favourite, if any, stays.
+///   ⌘W        Close the current session or note tab. A session's Home
+///             favourite stays; a note's file is never deleted.
 @MainActor
 final class KeyCommandHandler {
     private let controller: PanelController
@@ -57,23 +60,6 @@ final class KeyCommandHandler {
     private func handle(_ event: NSEvent) -> NSEvent? {
         guard let window = event.window else { return event }
 
-        // Note windows have their own tiny shortcut surface: ⌘W saves and
-        // closes the note, ⌘N opens another one. Every other keystroke goes
-        // straight to the editor untouched.
-        if let noteWindow = window as? NoteWindow {
-            let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
-            let chars = event.charactersIgnoringModifiers?.lowercased() ?? ""
-            if flags.contains(.command), chars == "w" {
-                controller.noteController.close(noteWindow)
-                return nil
-            }
-            if flags.contains(.command), chars == "n" {
-                controller.openNewNote()
-                return nil
-            }
-            return event
-        }
-
         // Local monitors see every keyDown in the app, including ones aimed
         // at the separate Settings window -- only our own floating panel's
         // shortcuts belong here.
@@ -86,9 +72,9 @@ final class KeyCommandHandler {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let chars = event.charactersIgnoringModifiers?.lowercased() ?? ""
 
-        // Every rail row is a session, so ⌘W and ⇧⌘W close it by the same rule.
-        // The event is swallowed on Home too, preventing AppKit from closing
-        // the panel or app.
+        // Every rail row is a session or note tab, so ⌘W and ⇧⌘W close it by
+        // the same rule. The event is swallowed on Home too, preventing
+        // AppKit from closing the panel or app.
         if flags.contains(.command), chars == "w" {
             controller.performClose(controller.closeAction())
             return nil
@@ -101,9 +87,20 @@ final class KeyCommandHandler {
 
         guard flags.contains(.command) else { return event }
         let shift = flags.contains(.shift)
-        // Both `.favourite` and `.browse` show `BrowserPanel` -- the shared
-        // web-content surface -- so "browser mode" means "not home" here.
-        let isBrowserMode = !controller.showsStartPage
+
+        // Note-only, and checked before the browser shortcuts below so the
+        // combination stays free for a site otherwise.
+        if shift, chars == "p", controller.isShowingNote {
+            controller.toggleNotePreview()
+            return nil
+        }
+
+        if shift, chars == "l", controller.isShowingNote {
+            controller.toggleNoteMarkdownRendering()
+            return nil
+        }
+
+        let isBrowserMode = controller.showsBrowserContent
 
         if !shift, let digit = Int(chars), (1...9).contains(digit) {
             controller.selectRailEntry(numbered: digit)
@@ -113,8 +110,10 @@ final class KeyCommandHandler {
         if !shift, chars == "0" {
             if isBrowserMode {
                 controller.sessionManager.activeSession()?.resetZoom()
-            } else {
+            } else if controller.showsStartPage {
                 controller.goHome()
+            } else {
+                return nil
             }
             return nil
         }
@@ -125,11 +124,13 @@ final class KeyCommandHandler {
         }
 
         if !shift, chars == "l" {
+            guard !controller.isShowingNote else { return nil }
             controller.focusAddressField()
             return nil
         }
 
         if !shift, chars == "f" {
+            guard isBrowserMode else { return nil }
             controller.toggleFindBar()
             return nil
         }
@@ -207,7 +208,13 @@ final class KeyCommandHandler {
             return nil
         }
 
-        if !controller.showsStartPage {
+        // A note has no Escape-level navigation. Swallow the key so AppKit's
+        // default text-view cancellation cannot dismiss the active pane.
+        if controller.isShowingNote {
+            return nil
+        }
+
+        if controller.showsBrowserContent {
             guard !firstResponderIsInsideWebView() else { return event }
             controller.goHome()
             return nil

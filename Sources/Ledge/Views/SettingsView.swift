@@ -135,6 +135,13 @@ private struct GeneralSettingsTab: View {
                     }
                 }
             }
+
+            Section("Notes") {
+                Toggle("Render Markdown while typing", isOn: $preferences.notesRenderMarkdown)
+                Text("Formats a note as you write it: “- ” becomes a bullet dot point, “# ” a heading, “**bold**” bold. Notes are still saved as plain Markdown text — only the drawing changes. ⇧⌘L switches it while a note is open.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
         .formStyle(.grouped)
     }
@@ -153,14 +160,16 @@ private struct ShortcutsSettingsTab: View {
     private let shortcuts: [Shortcut] = [
         .init(keys: GlobalShortcut.togglePanel.displayName, action: "Show or hide the panel"),
         .init(keys: GlobalShortcut.toggleEdgeReveal.displayName, action: "Turn reveal on edge hover on or off"),
-        .init(keys: "⌘1 – ⌘9", action: "Select the Nth session in the sidebar, counting from the top"),
+        .init(keys: "⌘1 – ⌘9", action: "Select the Nth open session or note in the sidebar, counting from the top"),
         .init(keys: "⌘0", action: "Reset zoom while browsing a site, else go home"),
         .init(keys: "⇧⌘H", action: "Go home"),
         .init(keys: "⌘L", action: "Focus the address or search field"),
         .init(keys: "⌘R", action: "Reload the current site"),
         .init(keys: "⌘F", action: "Show or hide find-in-page"),
         .init(keys: "⌘T", action: "Open a new session"),
-        .init(keys: "⌘N", action: "Open a new note window"),
+        .init(keys: "⌘N", action: "Open a new note as a tab"),
+        .init(keys: "⇧⌘P", action: "Swap the open note between preview and raw Markdown"),
+        .init(keys: "⇧⌘L", action: "Turn Markdown rendering in the note editor on or off"),
         .init(keys: "⌘[  /  ⌘←", action: "Back"),
         .init(keys: "⌘]  /  ⌘→", action: "Forward"),
         .init(keys: "⌘+  /  ⌘=", action: "Zoom in"),
@@ -168,7 +177,7 @@ private struct ShortcutsSettingsTab: View {
         .init(keys: "⇧⌘C", action: "Copy the current page's URL"),
         .init(keys: "⇧⌘O", action: "Open the current page in your default browser"),
         .init(keys: "Esc", action: "Close find-in-page, else leave a focused text field, else pass through to the page, else go home, else hide the panel"),
-        .init(keys: "⌘W", action: "Close the current session or note window; never removes its Home favourite or closes the panel")
+        .init(keys: "⌘W", action: "Close the current session or note tab; a note is saved, not deleted, and the panel stays")
     ]
 
     var body: some View {

@@ -9,6 +9,8 @@ enum LauncherDestination: Hashable {
     /// An ordinary session. It shows the start page until something is loaded
     /// into it (see `blankTabIDs`), then the web view.
     case tab(UUID)
+    /// An open note tab. It shows the plain-text editor, never a web view.
+    case note(UUID)
 }
 
 /// Which screen edge the panel is currently pinned to.
@@ -700,6 +702,23 @@ final class PanelController: NSObject, ObservableObject {
         return id
     }
 
+    /// The note tab currently shown in the main pane, if any.
+    var activeNoteID: UUID? {
+        guard case .note(let id) = destination else { return nil }
+        return id
+    }
+
+    /// Whether the main pane is showing a note editor rather than the
+    /// start page or a web view.
+    var isShowingNote: Bool {
+        activeNoteID != nil
+    }
+
+    /// Whether the main pane should show the web surface (`BrowserPanel`).
+    var showsBrowserContent: Bool {
+        !showsStartPage && activeNoteID == nil
+    }
+
     /// Whether the main pane should show the start page rather than a web
     /// view: either the Home destination, or a tab nothing has been loaded
     /// into yet.
@@ -711,6 +730,8 @@ final class PanelController: NSObject, ObservableObject {
             false
         case .tab(let id):
             blankTabIDs.contains(id)
+        case .note:
+            false
         }
     }
 
@@ -815,6 +836,7 @@ final class PanelController: NSObject, ObservableObject {
     /// Focuses whatever text field is relevant to the current destination:
     /// the browser address field, or the home search field.
     func focusAddressField() {
+        guard !isShowingNote else { return }
         if showsStartPage {
             bumpHomeFocus()
         } else {
@@ -826,7 +848,7 @@ final class PanelController: NSObject, ObservableObject {
     /// grid). Closing clears any live WebKit find highlight so it does not
     /// linger after the bar disappears.
     func toggleFindBar() {
-        guard !showsStartPage else { return }
+        guard showsBrowserContent else { return }
         if isShowingFindBar {
             closeFindBar()
         } else {
@@ -859,9 +881,10 @@ final class PanelController: NSObject, ObservableObject {
         case .home: nil
         case .favourite(let id): .favourite(id)
         case .tab(let id): .tab(id)
+        case .note: nil
         }
         let wasActive = sessionManager.activeSessionID == kind || destinationKind == kind
-        let successor = SessionSelection.successor(after: kind, in: sessionManager.sessionOrder)
+        let successor = RailSelection.successor(after: kind, in: sessionManager.sessionOrder)
 
         sessionManager.closeSession(kind: kind)
         if let tabID = kind.tabID {
@@ -887,6 +910,8 @@ final class PanelController: NSObject, ObservableObject {
         switch action {
         case .closeSession(let kind):
             closeSession(kind)
+        case .closeNote(let id):
+            closeNote(id)
         case .nothing:
             break
         }
@@ -921,16 +946,91 @@ final class PanelController: NSObject, ObservableObject {
         isShowingAddFavourite = true
     }
 
-    /// Opens a brand-new note window (⌘N / "New Note" / the Home tile).
+    /// Opens a brand-new note as a tab (⌘N / "New Note" / the Home tile).
     /// Notes are local plain-text files, independent of the session manager
     /// -- nothing web-related is created or touched.
     func openNewNote() {
-        noteController.openNewNote()
+        let tab = noteController.openNewNote()
+        selectNoteTab(tab.note.id)
     }
 
-    /// Opens (or focuses) an existing note window from a Home tile.
+    /// Opens (or focuses) an existing note's tab from a Home tile.
     func openNote(_ note: Note) {
-        noteController.open(note)
+        let tab = noteController.open(note)
+        selectNoteTab(tab.note.id)
+    }
+
+    /// Selects the already-open note tab for `id`, if one exists.
+    func openNoteTab(_ id: UUID) {
+        guard noteController.tab(for: id) != nil else { return }
+        selectNoteTab(id)
+    }
+
+    /// ⇧⌘P: swaps the active note between the rendered preview and the raw
+    /// Markdown editor. A no-op unless a note is the pane's current
+    /// content, so the shortcut never disturbs a site or the home screen.
+    func toggleNotePreview() {
+        guard let id = activeNoteID, let tab = noteController.tab(for: id) else { return }
+        tab.togglePreview()
+    }
+
+    /// ⇧⌘L: turns live Markdown rendering in the note editor on or off.
+    ///
+    /// The setting is shared by every note, but the shortcut is only
+    /// accepted while a note is on screen -- flipping how notes are drawn
+    /// from a web page or the home grid would be an invisible change.
+    func toggleNoteMarkdownRendering() {
+        guard isShowingNote else { return }
+        preferences.notesRenderMarkdown.toggle()
+    }
+
+    /// Shows the note tab for `id` in the main pane.
+    private func selectNoteTab(_ id: UUID) {
+        sessionManager.setActiveSession(nil)
+        destination = .note(id)
+        isShowingFindBar = false
+        noteController.tab(for: id)?.bumpFocus()
+    }
+
+    /// Closes a note tab, saving it first. The note itself stays on disk --
+    /// closing a note tab never deletes it, exactly like closing a session
+    /// never removes its Home favourite.
+    func closeNote(_ id: UUID) {
+        guard noteController.tab(for: id) != nil else { return }
+        retireNoteTab(id) { noteController.close($0) }
+    }
+
+    /// Deletes a note's file and retires its tab. Destructive; callers must
+    /// have already confirmed the action with the user.
+    func deleteNote(_ id: UUID) {
+        guard noteController.tab(for: id) != nil else { return }
+        retireNoteTab(id) { noteController.delete($0) }
+    }
+
+    /// Deletes a note from Home, where it may or may not have a tab open.
+    /// An open tab is retired exactly as the editor's own delete does, so
+    /// the rail never keeps a row for a file that no longer exists.
+    /// Destructive; callers must have already confirmed the action.
+    func deleteSavedNote(_ note: Note) {
+        if noteController.tab(for: note.id) != nil {
+            deleteNote(note.id)
+        } else {
+            noteController.store.delete(note)
+        }
+    }
+
+    /// Removes an open note tab and, when it was the active one, selects the
+    /// rail row that slides into its place -- mirroring `closeSession`.
+    private func retireNoteTab(_ id: UUID, remove: (UUID) -> Void) {
+        let wasActive = activeNoteID == id
+        let successor = RailSelection.successor(after: .note(id), in: railEntries)
+        remove(id)
+        guard wasActive else { return }
+        if let successor {
+            selectEntry(successor)
+        } else {
+            goHome()
+        }
     }
 
     /// Promotes the page in the transient "browse" session into a permanent
@@ -959,8 +1059,8 @@ final class PanelController: NSObject, ObservableObject {
         let derived = Favourite.preferredName(pageTitle: session.pageTitle, host: session.displayHost)
         let added = favourites.add(name: favourites.uniqueName(derived), address: url.absoluteString)
 
-        // Re-keying only records the shortcut association. The rail is ordered
-        // by the session array, so its row does not move or change behaviour.
+        // Re-keying only records the shortcut association. The session array
+        // keeps the same object in the same rail position.
         sessionManager.rekey(session, to: .favourite(added.id))
         session.iconHost = added.host
         blankTabIDs.remove(tabID)
@@ -993,42 +1093,62 @@ final class PanelController: NSObject, ObservableObject {
 
     // MARK: - Rail order
 
-    /// The currently open sessions in their in-memory rail order.
+    /// Open web sessions first, followed by open note tabs.
     var railEntries: [RailEntry] {
-        RailLayout.entries(sessions: sessionManager.sessionOrder)
+        sessionManager.sessionOrder.map(RailEntry.init)
+            + noteController.tabs.map { .note($0.id) }
     }
 
     /// Selects the rail row a ⌘1…⌘9 shortcut names, counting from the top of
     /// the rail so the shortcut follows the user's own ordering. Nothing
-    /// happens when the rail has no such row: the digits name open sessions,
-    /// so they never open anything that is not already there.
+    /// happens when the rail has no such row: the digits name rows that are
+    /// already open, so they never open anything that is not already there.
     func selectRailEntry(numbered number: Int) {
         guard let entry = RailLayout.entry(numbered: number, in: railEntries) else { return }
-        openSession(entry.sessionKind)
+        selectEntry(entry)
+    }
+
+    /// Selects whatever rail row was clicked or named, session or note.
+    func selectEntry(_ entry: RailEntry) {
+        switch entry {
+        case .note(let id):
+            openNoteTab(id)
+        case .favourite, .tab:
+            guard let kind = entry.sessionKind else { return }
+            openSession(kind)
+        }
     }
 
     /// Moves a row by drop position: the upper half of the row under the pointer
     /// means "above it", the lower half "below it".
     func moveRailEntry(_ entry: RailEntry, relativeTo target: RailEntry, isBelow: Bool) {
-        let entries = railEntries
+        let group = railGroup(containing: entry)
+        guard group.contains(target) else { return }
         guard let reordered = RailLayout.moved(
             entry,
             relativeTo: target,
             isBelow: isBelow,
-            in: entries
+            in: group
         ) else { return }
         applyRailOrder(reordered)
     }
 
     /// Moves a row by whole positions, for the menu's Move Up and Move Down.
     func moveRailEntry(_ entry: RailEntry, by offset: Int) {
-        guard let reordered = RailLayout.moved(entry, by: offset, in: railEntries) else { return }
+        let group = railGroup(containing: entry)
+        guard let reordered = RailLayout.moved(entry, by: offset, in: group) else { return }
         applyRailOrder(reordered)
+    }
+
+    func railGroup(containing entry: RailEntry) -> [RailEntry] {
+        let isNote = entry.noteID != nil
+        return railEntries.filter { ($0.noteID != nil) == isNote }
     }
 
     /// Reordering the rail never changes Home favourite order.
     private func applyRailOrder(_ entries: [RailEntry]) {
-        sessionManager.setSessionOrder(RailLayout.sessionKinds(in: entries))
+        sessionManager.setSessionOrder(entries.compactMap(\.sessionKind))
+        noteController.setNoteOrder(entries.compactMap(\.noteID))
     }
 
     // MARK: - Geometry

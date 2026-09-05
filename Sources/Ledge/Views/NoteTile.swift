@@ -1,25 +1,40 @@
 import SwiftUI
 
-/// One saved note on the Home grid. Clicking opens (or focuses) its window;
-/// the note itself is deleted from inside the window so the destructive
-/// action always has an explicit confirmation.
+/// One saved note on the Home grid. Clicking opens (or focuses) its tab;
+/// right-clicking offers the same two actions a note has outside its
+/// editor. Deleting always goes through an explicit confirmation, because
+/// it removes the file rather than just closing the tab.
 struct NoteTile: View {
     let note: Note
     let isOpen: Bool
     let open: () -> Void
+    let delete: () -> Void
 
     @State private var isHovering = false
+    @State private var isConfirmingDelete = false
 
     var body: some View {
         Button(action: open) {
             VStack(alignment: .leading, spacing: 0) {
-                Image(systemName: "note.text")
-                    .font(.system(size: 22, weight: .light))
-                    .foregroundStyle(isOpen ? Color.accentColor : Theme.inkTertiary)
+                // "Open" borrows the Dock's idiom: a small neutral dot
+                // beneath the icon. Not a 2pt accent ring -- several notes
+                // can be open at once and a grid of blue boxes reads as an
+                // error -- and not an accent dot in the corner, which reads
+                // as an unread badge.
+                VStack(spacing: 4) {
+                    Image(systemName: "note.text")
+                        .font(.system(size: 22, weight: .light))
+                        .foregroundStyle(Theme.inkTertiary)
+                    Circle()
+                        .fill(Theme.inkSecondary)
+                        .frame(width: 4, height: 4)
+                        .opacity(isOpen ? 1 : 0)
+                }
+                .fixedSize()
 
                 Spacer(minLength: 0)
 
-                Text(note.title)
+                Text(note.displayTitle)
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
                     .foregroundStyle(Theme.ink)
                     .lineLimit(1)
@@ -40,13 +55,20 @@ struct NoteTile: View {
             )
             .overlay {
                 RoundedRectangle(cornerRadius: Theme.Metrics.cardCornerRadius, style: .continuous)
-                    .stroke(isOpen ? Color.accentColor.opacity(0.9) : Theme.hairline, lineWidth: isOpen ? 2 : 1)
+                    .stroke(Theme.hairline, lineWidth: 1)
             }
+            // Same lift and shadow as a favourite tile: the two grids are
+            // one surface, so they must answer the pointer identically.
+            .tileHoverShadow(isHovering: isHovering)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(TilePressStyle(isHovering: isHovering))
         .onHover { isHovering = $0 }
+        .contextMenu {
+            NoteMenuItems(open: open) { isConfirmingDelete = true }
+        }
+        .confirmNoteDeletion(title: note.displayTitle, isPresented: $isConfirmingDelete, delete: delete)
         .help("Open note")
-        .accessibilityLabel(isOpen ? "Open note: \(note.title)" : "Note: \(note.title)")
+        .accessibilityLabel(isOpen ? "Open note: \(note.displayTitle)" : "Note: \(note.displayTitle)")
     }
 }
 
@@ -77,6 +99,9 @@ struct NewNoteTile: View {
                 RoundedRectangle(cornerRadius: Theme.Metrics.cardCornerRadius, style: .continuous)
                     .stroke(Theme.hairline, lineWidth: 1)
             }
+            // Matches `AddTile`: the two "add" tiles lift, but without the
+            // full card shadow, so they stay quieter than real content.
+            .scaleEffect(isHovering ? 1.02 : 1)
         }
         .buttonStyle(.plain)
         .onHover { isHovering = $0 }

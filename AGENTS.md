@@ -16,7 +16,7 @@ Preserve the core product contract:
   close, or otherwise change an already-open session;
 - open sessions keep their `WKWebView` until the user closes them, and no
   sessions are restored across launches; notes persist as local plain-text
-  files, but open note windows, like sessions, are never restored across
+  files, but open note tabs, like sessions, are never restored across
   launches;
 - the app remains an accessory app with no Dock or app-switcher presence;
 - outside display edges may reveal the panel; interior multi-display seams may not;

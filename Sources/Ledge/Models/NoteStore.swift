@@ -4,10 +4,12 @@ import Combine
 /// Owns the locally persisted note files.
 ///
 /// One file per note (named `<UUID>.md`) under `Notes/`. The store is the
-/// single owner of note ordering and persistence; note windows are just
+/// single owner of note ordering and persistence; open note tabs are just
 /// editors over a note's body. Files are the source of truth, so notes
 /// survive launches (and even survive this app being deleted) and nothing
-/// needs a schema or a migration.
+/// needs a database or a migration: a note's title rides above its text in
+/// a front-matter block (see `NoteFile`), and an older file without one is
+/// simply named from its first line when it loads.
 @MainActor
 final class NoteStore: ObservableObject {
     /// Most recently edited first.
@@ -38,7 +40,17 @@ final class NoteStore: ObservableObject {
     /// Creates an empty note on disk and returns it.
     @discardableResult
     func createNewNote() -> Note {
-        let note = Note(id: UUID(), body: "", createdAt: Date(), updatedAt: Date())
+        // A new note is named rather than left blank so the rail, the
+        // menu, and the Home grid have something to say before a word is
+        // typed -- and numbered so two unnamed notes are still telling
+        // apart at a glance.
+        let note = Note(
+            id: UUID(),
+            title: unusedUntitledName(),
+            body: "",
+            createdAt: Date(),
+            updatedAt: Date()
+        )
         write(note)
         insert(note)
         return note
@@ -46,13 +58,15 @@ final class NoteStore: ObservableObject {
 
     /// Writes the note's current body, bumping `updatedAt` so recently
     /// edited notes rise to the top of the Home list.
-    func save(_ note: Note) {
+    @discardableResult
+    func save(_ note: Note) -> Note {
         var updated = note
         updated.updatedAt = Date()
         write(updated)
-        guard let index = notes.firstIndex(where: { $0.id == note.id }) else { return }
+        guard let index = notes.firstIndex(where: { $0.id == note.id }) else { return updated }
         notes[index] = updated
         resort()
+        return updated
     }
 
     /// Permanently removes a note's file. Destructive callers must have
@@ -86,17 +100,34 @@ final class NoteStore: ObservableObject {
     private func loadNote(from url: URL) -> Note? {
         guard let id = UUID(uuidString: url.deletingPathExtension().lastPathComponent),
               let data = fileManager.contents(atPath: url.path),
-              let body = String(data: data, encoding: .utf8) else {
+              let text = String(data: data, encoding: .utf8) else {
             return nil
         }
+        let parsed = NoteFile.parse(text)
         let attributes = try? fileManager.attributesOfItem(atPath: url.path)
         let createdAt = attributes?[.creationDate] as? Date ?? Date()
         let updatedAt = attributes?[.modificationDate] as? Date ?? Date()
-        return Note(id: id, body: body, createdAt: createdAt, updatedAt: updatedAt)
+        // A file written before titles were stored keeps the name its
+        // owner already knows it by: its first line. The body is left
+        // exactly as written -- naming a note must never edit it.
+        let title = parsed.title.isEmpty ? Note.inferredTitle(from: parsed.body) : parsed.title
+        return Note(
+            id: id,
+            title: title,
+            body: parsed.body,
+            createdAt: createdAt,
+            updatedAt: updatedAt,
+            extraFrontMatter: parsed.extraFrontMatter
+        )
     }
 
     private func write(_ note: Note) {
-        guard let data = note.body.data(using: .utf8) else { return }
+        let text = NoteFile.serialise(
+            title: note.title,
+            extraFrontMatter: note.extraFrontMatter,
+            body: note.body
+        )
+        guard let data = text.data(using: .utf8) else { return }
         do {
             // Atomic: write a temp file and swap it into place, so a crash
             // mid-save can never truncate a note to a half-written file.
@@ -121,6 +152,16 @@ final class NoteStore: ObservableObject {
 
     private func fileURL(for id: UUID) -> URL {
         directory.appendingPathComponent(id.uuidString).appendingPathExtension("md")
+    }
+
+    /// "New Note", then "New Note 2": a name a user can tell apart, rather
+    /// than a grid of identical tiles.
+    private func unusedUntitledName() -> String {
+        let taken = Set(notes.map { $0.title.trimmingCharacters(in: .whitespacesAndNewlines) })
+        guard taken.contains(Note.untitledTitle) else { return Note.untitledTitle }
+        var index = 2
+        while taken.contains("\(Note.untitledTitle) \(index)") { index += 1 }
+        return "\(Note.untitledTitle) \(index)"
     }
 
     private func insert(_ note: Note) {

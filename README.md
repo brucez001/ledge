@@ -47,7 +47,17 @@ I obtain one. Building from source following the steps below also avoids them.
 - Keep the panel open persistently when you need it.
 - Turn off reveal on edge hover when it becomes annoying.
 - Save favourite sites for quick access.
-- Take a quick note with **⌘N** — notes save locally as plain text.
+- Take a quick note with **⌘N** — it opens as a tab beside your sessions and
+  saves locally as a plain Markdown file.
+- Write in Markdown with a formatting toolbar, and swap between the rendered
+  preview and the raw text with **⇧⌘P**.
+- See your Markdown as you type it: “- ” becomes a bullet dot point, “# ” a
+  heading, “**bold**” bold. The markers themselves stop being drawn once you
+  move on, and reappear on the line you are editing. The file stays plain
+  text — only the drawing changes. Turn it off with **⇧⌘L** or in Notes
+  settings to write against the raw characters.
+- Rename a note by clicking its title — the name is the note's own, so renaming
+  never rewrites your Markdown and a heading you type never renames the note.
 - Use keyboard shortcuts for quick access and navigation.
 
 ## Requirements

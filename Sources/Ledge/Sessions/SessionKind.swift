@@ -19,16 +19,3 @@ enum SessionKind: Hashable {
         return id
     }
 }
-
-/// Which live session to select after closing one.
-enum SessionSelection {
-    /// Mirrors a browser: the row that slides into the closed one's place, or
-    /// the row before it when the last one is closed.
-    static func successor(after id: SessionKind, in sessions: [SessionKind]) -> SessionKind? {
-        guard let index = sessions.firstIndex(of: id) else { return nil }
-        var remaining = sessions
-        remaining.remove(at: index)
-        guard !remaining.isEmpty else { return nil }
-        return remaining[min(index, remaining.count - 1)]
-    }
-}

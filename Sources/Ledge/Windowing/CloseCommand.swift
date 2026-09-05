@@ -2,11 +2,13 @@ import Foundation
 
 /// What "close" means for whatever the panel is currently showing.
 ///
-/// Every rail row is an open session, so the rule is deliberately uniform:
-/// closing removes that session and row. If it was opened from a Home
-/// favourite, the shortcut remains untouched.
+/// Every rail row is an open session or note tab, so the rule is
+/// deliberately uniform: closing removes the row. A session's Home shortcut
+/// is never touched and a note's file is never deleted -- closing only ends
+/// the editor, exactly like a browser closing a tab.
 enum CloseAction: Equatable {
     case closeSession(SessionKind)
+    case closeNote(UUID)
     case nothing
 }
 
@@ -18,6 +20,8 @@ enum CloseCommand {
             .closeSession(.favourite(id))
         case .tab(let id):
             .closeSession(.tab(id))
+        case .note(let id):
+            .closeNote(id)
         case .home:
             .nothing
         }

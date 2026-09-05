@@ -1,7 +1,7 @@
 import Foundation
 import UniformTypeIdentifiers
 
-/// The drag payload used to reorder open rail sessions.
+/// The drag payload used to reorder open rail rows (sessions and note tabs).
 ///
 /// It rides on plain text (which needs no declared custom type) but is
 /// prefixed, so a stray drop of text from another app cannot be mistaken for a
@@ -12,6 +12,7 @@ enum SiteDragPayload {
     private static let homeFavouritePrefix = "ledge.home-favourite:"
     private static let railFavouritePrefix = "ledge.rail-favourite:"
     private static let railTabPrefix = "ledge.rail-tab:"
+    private static let railNotePrefix = "ledge.rail-note:"
 
     /// What is being dragged around the rail.
     enum Item: Equatable {
@@ -19,6 +20,8 @@ enum SiteDragPayload {
         case site(UUID)
         /// An ordinary session with no Home favourite.
         case tab(UUID)
+        /// An open note tab.
+        case note(UUID)
     }
 
     static func encode(_ id: UUID) -> String {
@@ -31,6 +34,10 @@ enum SiteDragPayload {
 
     static func encodeRailTab(_ id: UUID) -> String {
         railTabPrefix + id.uuidString
+    }
+
+    static func encodeRailNote(_ id: UUID) -> String {
+        railNotePrefix + id.uuidString
     }
 
     /// Home-only decode, so a rail session cannot reorder shortcut tiles.
@@ -51,6 +58,10 @@ enum SiteDragPayload {
         if trimmed.hasPrefix(railTabPrefix),
            let id = UUID(uuidString: String(trimmed.dropFirst(railTabPrefix.count))) {
             return .tab(id)
+        }
+        if trimmed.hasPrefix(railNotePrefix),
+           let id = UUID(uuidString: String(trimmed.dropFirst(railNotePrefix.count))) {
+            return .note(id)
         }
         return nil
     }

@@ -169,7 +169,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         if !notes.isEmpty {
             submenu.addItem(.separator())
             for note in notes {
-                let item = NSMenuItem(title: note.title, action: #selector(openSavedNote(_:)), keyEquivalent: "")
+                let item = NSMenuItem(title: note.displayTitle, action: #selector(openSavedNote(_:)), keyEquivalent: "")
                 item.target = self
                 item.representedObject = note.id
                 submenu.addItem(item)
@@ -214,10 +214,13 @@ final class StatusItemController: NSObject, NSMenuDelegate {
     }
 
     @objc private func openNewNote() {
-        // Opening a key window from inside a tracking menu needs the same
-        // tick-delay the Settings button uses.
+        // A note is a tab in the panel, so opening one from the menu-bar has
+        // to reveal the panel too -- otherwise, while hidden, nothing
+        // visibly happens. The tick-delay is the one the Settings button uses.
         DispatchQueue.main.async { [weak self] in
-            self?.panelController.openNewNote()
+            guard let self else { return }
+            self.panelController.show()
+            self.panelController.openNewNote()
         }
     }
 
@@ -225,7 +228,9 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         guard let id = sender.representedObject as? UUID,
               let note = panelController.noteController.store.note(withID: id) else { return }
         DispatchQueue.main.async { [weak self] in
-            self?.panelController.openNote(note)
+            guard let self else { return }
+            self.panelController.show()
+            self.panelController.openNote(note)
         }
     }
 

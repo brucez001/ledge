@@ -22,4 +22,12 @@ final class CloseCommandTests: XCTestCase {
     func testHomeHasNoSessionToClose() {
         XCTAssertEqual(CloseCommand.resolve(destination: .home), .nothing)
     }
+
+    func testCommandWClosesANoteTabWithoutDeletingItsFile() {
+        let note = UUID()
+        XCTAssertEqual(
+            CloseCommand.resolve(destination: .note(note)),
+            .closeNote(note)
+        )
+    }
 }

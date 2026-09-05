@@ -26,10 +26,11 @@ enum Theme {
     )
 
     /// Raised surfaces: favourite tiles, capsule fields.
-    static let card = dynamic(
+    private static let cardNS = dynamicNSColor(
         light: NSColor(calibratedWhite: 1.0, alpha: 0.86),
         dark: NSColor(calibratedWhite: 1.0, alpha: 0.10)
     )
+    static let card = Color(nsColor: cardNS)
 
     static let cardHover = dynamic(
         light: NSColor(calibratedWhite: 1.0, alpha: 1.0),
@@ -37,20 +38,32 @@ enum Theme {
     )
 
     /// Primary text.
-    static let ink = dynamic(
+    private static let inkNS = dynamicNSColor(
         light: NSColor(calibratedWhite: 0.09, alpha: 1),
         dark: NSColor(calibratedWhite: 0.96, alpha: 1)
     )
+    static let ink = Color(nsColor: inkNS)
 
-    static let inkSecondary = dynamic(
+    private static let inkSecondaryNS = dynamicNSColor(
         light: NSColor(calibratedWhite: 0.09, alpha: 0.62),
         dark: NSColor(calibratedWhite: 0.96, alpha: 0.62)
     )
+    static let inkSecondary = Color(nsColor: inkSecondaryNS)
 
-    static let inkTertiary = dynamic(
+    private static let inkTertiaryNS = dynamicNSColor(
         light: NSColor(calibratedWhite: 0.09, alpha: 0.38),
         dark: NSColor(calibratedWhite: 0.96, alpha: 0.38)
     )
+    static let inkTertiary = Color(nsColor: inkTertiaryNS)
+
+    /// AppKit aliases for the Markdown text storage. Keep this surface
+    /// limited to colours AppKit actually consumes.
+    enum NS {
+        static let card = cardNS
+        static let ink = inkNS
+        static let inkSecondary = inkSecondaryNS
+        static let inkTertiary = inkTertiaryNS
+    }
 
     /// Hairline separators and the panel's outer edge highlight.
     static let hairline = dynamic(
@@ -130,9 +143,13 @@ enum Theme {
     }
 
     private static func dynamic(light: NSColor, dark: NSColor) -> Color {
-        Color(nsColor: NSColor(name: nil) { appearance in
+        Color(nsColor: dynamicNSColor(light: light, dark: dark))
+    }
+
+    private static func dynamicNSColor(light: NSColor, dark: NSColor) -> NSColor {
+        NSColor(name: nil) { appearance in
             appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light
-        })
+        }
     }
 }
 

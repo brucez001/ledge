@@ -143,6 +143,16 @@ final class Preferences: ObservableObject {
         didSet { store(pinsBrowserToolbar, .pinsBrowserToolbar) }
     }
 
+    /// When on (the default) a note editor renders its Markdown as it is
+    /// typed: `- ` becomes a bullet dot point, `# ` a heading, `**bold**`
+    /// bold. The file on disk is still plain Markdown -- only the drawing
+    /// changes -- so this is a view preference rather than a document
+    /// format, and it is shared by every open note instead of being set per
+    /// tab: "how I write notes" is a habit, not a property of one file.
+    @Published var notesRenderMarkdown: Bool {
+        didSet { store(notesRenderMarkdown, .notesRenderMarkdown) }
+    }
+
     private let defaults: UserDefaults
 
     private enum Key: String {
@@ -155,6 +165,7 @@ final class Preferences: ObservableObject {
         case faviconSource = "ledge.faviconSource"
         case edgeRevealTakesFocus = "ledge.edgeRevealTakesFocus"
         case pinsBrowserToolbar = "ledge.pinsBrowserToolbar"
+        case notesRenderMarkdown = "ledge.notes.renderMarkdown"
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -178,6 +189,7 @@ final class Preferences: ObservableObject {
         ) ?? .siteThenService
         edgeRevealTakesFocus = defaults.object(forKey: Key.edgeRevealTakesFocus.rawValue) as? Bool ?? false
         pinsBrowserToolbar = defaults.object(forKey: Key.pinsBrowserToolbar.rawValue) as? Bool ?? false
+        notesRenderMarkdown = defaults.object(forKey: Key.notesRenderMarkdown.rawValue) as? Bool ?? true
     }
 
     /// Delay is clamped so a mis-typed value can never make the trigger feel

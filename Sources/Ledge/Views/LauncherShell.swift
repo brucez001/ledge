@@ -8,6 +8,7 @@ struct LauncherShell: View {
     @ObservedObject var controller: PanelController
     @ObservedObject private var favourites: FavouritesStore
     @ObservedObject private var sessionManager: SessionManager
+    @ObservedObject private var noteController: NoteController
     /// Pulled out (rather than read as `controller.preferences...`) so
     /// changes made in Settings while the panel is open -- animation
     /// speed in particular -- take effect immediately.
@@ -17,6 +18,7 @@ struct LauncherShell: View {
         self.controller = controller
         self.favourites = controller.favourites
         self.sessionManager = controller.sessionManager
+        self.noteController = controller.noteController
         self.preferences = controller.preferences
     }
 
@@ -37,8 +39,12 @@ struct LauncherShell: View {
                     .allowsHitTesting(controller.showsStartPage)
 
                 BrowserPanel(controller: controller, sessionManager: sessionManager)
-                    .opacity(controller.showsStartPage ? 0 : 1)
-                    .allowsHitTesting(!controller.showsStartPage)
+                    .opacity(controller.showsBrowserContent ? 1 : 0)
+                    .allowsHitTesting(controller.showsBrowserContent)
+
+                notesPane
+                    .opacity(controller.isShowingNote ? 1 : 0)
+                    .allowsHitTesting(controller.isShowingNote)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
@@ -47,6 +53,9 @@ struct LauncherShell: View {
                 AppRail(controller: controller)
             }
         }
+        // Rail hover cards are drawn here, not in the rail, so they can open
+        // sideways over the content instead of being clipped to 44pt.
+        .railHoverCardLayer(dockSide: controller.dockSide)
         .background {
             // Vibrancy first so the panel reads as native macOS chrome
             // rather than a flat rectangle pasted over the desktop, with
@@ -71,5 +80,24 @@ struct LauncherShell: View {
         .sheet(isPresented: $controller.isShowingAddFavourite) {
             AddFavouriteSheet(store: favourites)
         }
+    }
+
+    /// One editor per open note tab, always mounted so a half-typed draft
+    /// survives switching tabs. Only the active tab is visible or interactive.
+    private var notesPane: some View {
+        ZStack {
+            ForEach(noteController.tabs) { tab in
+                let isActive = controller.activeNoteID == tab.note.id
+                NoteEditorView(
+                    tab: tab,
+                    isActive: isActive,
+                    onDelete: { controller.deleteNote(tab.note.id) },
+                    onClose: { controller.closeNote(tab.note.id) }
+                )
+                .opacity(isActive ? 1 : 0)
+                .allowsHitTesting(isActive)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

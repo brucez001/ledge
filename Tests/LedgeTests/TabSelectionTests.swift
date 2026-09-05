@@ -1,35 +1,35 @@
 import XCTest
 @testable import Ledge
 
-final class SessionSelectionTests: XCTestCase {
-    private let favourite = SessionKind.favourite(UUID())
-    private let tabA = SessionKind.tab(UUID())
-    private let tabB = SessionKind.tab(UUID())
+final class RailSelectionTests: XCTestCase {
+    private let favourite = RailEntry.favourite(UUID())
+    private let tab = RailEntry.tab(UUID())
+    private let note = RailEntry.note(UUID())
 
-    func testClosingAMiddleSessionSelectsTheOneAfterIt() {
+    func testClosingAMiddleItemSelectsTheOneAfterIt() {
         XCTAssertEqual(
-            SessionSelection.successor(after: favourite, in: [tabA, favourite, tabB]),
-            tabB
+            RailSelection.successor(after: favourite, in: [tab, favourite, note]),
+            note
         )
     }
 
-    func testClosingTheFirstSessionSelectsTheNextOne() {
+    func testClosingTheFirstItemSelectsTheNextOne() {
         XCTAssertEqual(
-            SessionSelection.successor(after: tabA, in: [tabA, favourite, tabB]),
+            RailSelection.successor(after: tab, in: [tab, favourite, note]),
             favourite
         )
     }
 
-    func testClosingTheLastSessionSelectsThePreviousOne() {
+    func testClosingTheLastItemSelectsThePreviousOne() {
         XCTAssertEqual(
-            SessionSelection.successor(after: tabB, in: [tabA, favourite, tabB]),
+            RailSelection.successor(after: note, in: [tab, favourite, note]),
             favourite
         )
     }
 
-    func testClosingTheOnlyOrUnknownSessionSelectsNothing() {
-        XCTAssertNil(SessionSelection.successor(after: tabA, in: [tabA]))
-        XCTAssertNil(SessionSelection.successor(after: tabB, in: [tabA, favourite]))
+    func testClosingTheOnlyOrUnknownItemSelectsNothing() {
+        XCTAssertNil(RailSelection.successor(after: tab, in: [tab]))
+        XCTAssertNil(RailSelection.successor(after: note, in: [tab, favourite]))
     }
 
     func testSessionKindAccessorsKeepAssociationExplicit() {

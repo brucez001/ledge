@@ -7,33 +7,12 @@ final class RailLayoutTests: XCTestCase {
     private let tabA = UUID()
     private let tabB = UUID()
 
-    func testRailContainsOnlyLiveSessionsInManagerOrder() {
-        let sessions: [SessionKind] = [
-            .tab(tabA),
-            .favourite(siteA),
-            .tab(tabB),
-            .favourite(siteB)
-        ]
-
-        XCTAssertEqual(
-            RailLayout.entries(sessions: sessions),
-            [.tab(tabA), .favourite(siteA), .tab(tabB), .favourite(siteB)]
-        )
-    }
-
-    func testSessionKindsRoundTripWithoutChangingAssociation() {
-        let entries: [RailEntry] = [.favourite(siteA), .tab(tabA)]
-        XCTAssertEqual(
-            RailLayout.sessionKinds(in: entries),
-            [.favourite(siteA), .tab(tabA)]
-        )
-    }
-
     func testNumberedShortcutCountsRailRowsFromTheTop() {
-        let entries: [RailEntry] = [.tab(tabA), .favourite(siteA), .tab(tabB)]
+        let note = UUID()
+        let entries: [RailEntry] = [.tab(tabA), .note(note), .favourite(siteA)]
         XCTAssertEqual(RailLayout.entry(numbered: 1, in: entries), .tab(tabA))
-        XCTAssertEqual(RailLayout.entry(numbered: 2, in: entries), .favourite(siteA))
-        XCTAssertEqual(RailLayout.entry(numbered: 3, in: entries), .tab(tabB))
+        XCTAssertEqual(RailLayout.entry(numbered: 2, in: entries), .note(note))
+        XCTAssertEqual(RailLayout.entry(numbered: 3, in: entries), .favourite(siteA))
     }
 
     func testNumberedShortcutFollowsRailOrderRatherThanFavouriteOrder() {

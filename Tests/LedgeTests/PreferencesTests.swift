@@ -17,6 +17,21 @@ final class PreferencesTests: XCTestCase {
         XCTAssertEqual(preferences.edgeTriggerDelay, 0.12, accuracy: 0.0001)
     }
 
+    /// Notes render their Markdown as it is typed unless the user turns that
+    /// off, so a bullet looks like a bullet without having to be told to.
+    func testNotesRenderMarkdownByDefault() {
+        XCTAssertTrue(Preferences(defaults: makeSuite()).notesRenderMarkdown)
+    }
+
+    func testNotesRenderMarkdownRoundTripsAndSurvivesRubbish() {
+        let suite = makeSuite()
+        Preferences(defaults: suite).notesRenderMarkdown = false
+        XCTAssertFalse(Preferences(defaults: suite).notesRenderMarkdown)
+
+        suite.set("nonsense", forKey: "ledge.notes.renderMarkdown")
+        XCTAssertTrue(Preferences(defaults: suite).notesRenderMarkdown)
+    }
+
     func testChangesRoundTripThroughDefaults() {
         let suite = makeSuite()
 

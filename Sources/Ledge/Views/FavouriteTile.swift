@@ -33,7 +33,7 @@ struct FavouriteTile: View {
                 RoundedRectangle(cornerRadius: Theme.Metrics.cardCornerRadius, style: .continuous)
                     .stroke(isActive ? Color.accentColor.opacity(0.9) : Theme.hairline, lineWidth: isActive ? 2 : 1)
             }
-            .shadow(color: Theme.shadow(isDark: false).opacity(isHovering ? 0.5 : 0.3), radius: isHovering ? 14 : 9, y: isHovering ? 8 : 6)
+            .tileHoverShadow(isHovering: isHovering)
         }
         .buttonStyle(TilePressStyle(isHovering: isHovering))
         .onHover { isHovering = $0 }
@@ -66,18 +66,6 @@ struct FavouriteTile: View {
             controller.removeFavourite(item)
         }
         .accessibilityLabel("Open \(item.name)")
-    }
-}
-
-/// Scale-on-press feedback, layered on top of the hover-driven background
-/// change already applied in the label itself.
-private struct TilePressStyle: ButtonStyle {
-    let isHovering: Bool
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 0.97 : (isHovering ? 1.02 : 1))
-            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
 

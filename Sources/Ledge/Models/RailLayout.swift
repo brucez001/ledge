@@ -1,13 +1,15 @@
 import Foundation
 
-/// One open session in the rail.
+/// One open rail row: a live session or an open note tab.
 ///
-/// The two cases preserve whether a live session is associated with a Home
-/// favourite, but that association does not change its rail behaviour. The
-/// rail is simply the in-memory order of `SessionManager.sessions`.
+/// The session cases preserve whether a live session is associated with a
+/// Home favourite, but that association does not change its rail behaviour.
+/// Note tabs share the same close, menu, reordering, and keyboard rules as
+/// sessions; only their content is plain text rather than a web view.
 enum RailEntry: Hashable, Identifiable {
     case favourite(UUID)
     case tab(UUID)
+    case note(UUID)
 
     init(_ kind: SessionKind) {
         switch kind {
@@ -18,20 +20,22 @@ enum RailEntry: Hashable, Identifiable {
 
     var id: Self { self }
 
-    var sessionKind: SessionKind {
+    /// The session behind this entry, or `nil` for a note tab.
+    var sessionKind: SessionKind? {
         switch self {
         case .favourite(let id): .favourite(id)
         case .tab(let id): .tab(id)
+        case .note: nil
         }
-    }
-
-    var favouriteID: UUID? {
-        guard case .favourite(let id) = self else { return nil }
-        return id
     }
 
     var tabID: UUID? {
         guard case .tab(let id) = self else { return nil }
+        return id
+    }
+
+    var noteID: UUID? {
+        guard case .note(let id) = self else { return nil }
         return id
     }
 }
@@ -43,15 +47,11 @@ struct RailDropLine: Equatable {
     let isBelow: Bool
 }
 
-/// Pure ordering arithmetic for the live-session rail.
+/// Pure ordering arithmetic for the rail.
 ///
 /// Favourite order belongs to Home and never participates here. Reordering a
-/// rail row only rewrites the in-memory order of currently open sessions.
+/// rail row only rewrites the in-memory order of currently open items.
 enum RailLayout {
-    static func entries(sessions: [SessionKind]) -> [RailEntry] {
-        sessions.map(RailEntry.init)
-    }
-
     /// The rail after dropping `entry` immediately above (`isBelow == false`)
     /// or below `target`.
     static func moved(
@@ -96,10 +96,6 @@ enum RailLayout {
         return result
     }
 
-    static func sessionKinds(in entries: [RailEntry]) -> [SessionKind] {
-        entries.map(\.sessionKind)
-    }
-
     /// The row a ⌘1…⌘9 shortcut names. `number` is 1-based, as printed on the
     /// key, and counts rail rows from the top -- so it follows the user's own
     /// reordering rather than Home's favourite order.
@@ -138,5 +134,18 @@ enum RailLayout {
         }
         guard reordered.count > 1 else { return nil }
         return RailDropLine(entry: reordered[1], isBelow: false)
+    }
+}
+
+/// Which rail item to select after closing one.
+enum RailSelection {
+    /// Mirrors a browser: the row that slides into the closed one's place, or
+    /// the row before it when the last one is closed.
+    static func successor<Entry: Equatable>(after entry: Entry, in entries: [Entry]) -> Entry? {
+        guard let index = entries.firstIndex(of: entry) else { return nil }
+        var remaining = entries
+        remaining.remove(at: index)
+        guard !remaining.isEmpty else { return nil }
+        return remaining[min(index, remaining.count - 1)]
     }
 }
