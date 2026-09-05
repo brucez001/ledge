@@ -49,7 +49,7 @@ I obtain one. Building from source following the steps below also avoids them.
 - Save favourite sites for quick access.
 - Take quick Markdown notes with **⌘N** — they open as tabs beside your
   sessions, styled as you type, with a rendered preview on **⇧⌘P**.
-- Notes are saved on your Mac as plain-text files and never leave it.
+- Notes are saved on your Mac as plain Markdown files and never leave it.
 - Use keyboard shortcuts for quick access and navigation.
 
 ## Requirements
