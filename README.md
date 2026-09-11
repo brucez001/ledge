@@ -5,11 +5,12 @@
 <h1 align="center">Ledge</h1>
 
 <p align="center">
-  A native, local-only slide-over web panel for macOS.
+  A native, local-only slide-over web panel and notepad for macOS.
 </p>
 
-Ledge keeps the web apps you use most one hover or hotkey away. Open sites keep
-their WebKit sessions while you switch sites or hide the panel.
+Ledge keeps the sites you use most and your plain-text notes one hover or hotkey
+away. Open sites keep their WebKit sessions while you switch sites or hide the
+panel.
 
 No server. No account. No telemetry. No third-party runtime dependencies.
 
