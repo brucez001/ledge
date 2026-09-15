@@ -1,3 +1,6 @@
+
+
+
 <p align="center">
   <img src="Assets/AppIcon-256.png" width="128" height="128" alt="Ledge app icon">
 </p>
@@ -19,7 +22,7 @@ No server. No account. No telemetry. No third-party runtime dependencies.
 > and macOS asks for an extra confirmation on first launch. There is no
 > automatic updater.
 
-https://github.com/user-attachments/assets/0009b609-aa19-4cfa-9a0a-4fc8e9552779
+https://github.com/user-attachments/assets/cc7fc85f-4968-4e58-8821-4fec0083e260
 
 ## Download
 
