@@ -8,7 +8,6 @@ struct FavouriteTile: View {
 
     @State private var isHovering = false
     @State private var isConfirmingRemoval = false
-    @State private var isDropTargeted = false
 
     var body: some View {
         Button {
@@ -38,30 +37,13 @@ struct FavouriteTile: View {
             // Inside the button's label, not on the button: SwiftUI's button
             // press gesture claims the whole press-and-move sequence, so a
             // drag modifier attached outside it never starts a drag session.
-            .draggable(SiteDragPayload.encode(item.id))
+            .draggable(SiteDragPayload.encode(.homeFavourite, item.id))
         }
         .buttonStyle(TilePressStyle(isHovering: isHovering))
         .onHover { isHovering = $0 }
-        // A dropped tile lands *before* this one, so the indicator sits on the
-        // leading edge, in the gap between tiles rather than over the target.
-        .overlay(alignment: .leading) {
-            GridInsertionLine(isShowing: isDropTargeted)
-                .offset(x: -Theme.Metrics.tileGap / 2)
-        }
-        // Widened into the gaps either side, then shrunk back so the grid
-        // lays out unchanged. Without this the gap a drop is aimed at -- the
-        // gap the indicator is drawn in -- accepts nothing, and the release
-        // animates the tile back to where it came from.
-        .padding(.horizontal, Theme.Metrics.tileGap / 2)
-        .dropDestination(for: String.self) { payloads, _ in
-            // Re-inserts the dragged favourite directly before this tile.
-            guard let draggedID = payloads.compactMap(SiteDragPayload.decode).first else {
-                return false
-            }
+        .homeGridDropTarget(decoding: { SiteDragPayload.decode(.homeFavourite, from: $0) }) { draggedID in
             controller.favourites.move(id: draggedID, before: item.id)
-            return true
-        } isTargeted: { isDropTargeted = $0 }
-        .padding(.horizontal, -Theme.Metrics.tileGap / 2)
+        }
         .contextMenu {
             FavouriteMenuItems(
                 controller: controller,
@@ -85,7 +67,6 @@ struct AddTile: View {
     var onDropFavourite: ((UUID) -> Void)?
 
     @State private var isHovering = false
-    @State private var isDropTargeted = false
 
     var body: some View {
         Button(action: action) {
@@ -104,21 +85,6 @@ struct AddTile: View {
         .onHover { isHovering = $0 }
         .accessibilityLabel("Add favourite")
         .help("Add a favourite site")
-        // Dropping here sends the tile to the end of the grid, so the line
-        // marks the position *after* the last favourite.
-        .overlay(alignment: .leading) {
-            GridInsertionLine(isShowing: isDropTargeted)
-                .offset(x: -Theme.Metrics.tileGap / 2)
-        }
-        .padding(.horizontal, Theme.Metrics.tileGap / 2)
-        .dropDestination(for: String.self) { payloads, _ in
-            guard let onDropFavourite,
-                  let draggedID = payloads.compactMap(SiteDragPayload.decode).first else {
-                return false
-            }
-            onDropFavourite(draggedID)
-            return true
-        } isTargeted: { isDropTargeted = $0 }
-        .padding(.horizontal, -Theme.Metrics.tileGap / 2)
+        .homeGridDropTarget(decoding: { SiteDragPayload.decode(.homeFavourite, from: $0) }, perform: onDropFavourite)
     }
 }

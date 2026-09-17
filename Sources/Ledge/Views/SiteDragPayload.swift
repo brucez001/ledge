@@ -14,11 +14,18 @@ import UniformTypeIdentifiers
 /// declines everything else.
 enum SiteDragPayload {
     static let type = UTType.plainText
-    private static let homeFavouritePrefix = "ledge.home-favourite:"
-    private static let homeNotePrefix = "ledge.home-note:"
-    private static let railFavouritePrefix = "ledge.rail-favourite:"
-    private static let railTabPrefix = "ledge.rail-tab:"
-    private static let railNotePrefix = "ledge.rail-note:"
+
+    /// What is being dragged, and the prefix its payload carries. Each
+    /// surface reads only its own kind, so a Home shortcut cannot be dropped
+    /// into the open session order and a note cannot be dropped into the
+    /// favourites grid.
+    enum Kind: String, CaseIterable {
+        case homeFavourite = "ledge.home-favourite:"
+        case homeNote = "ledge.home-note:"
+        case railFavourite = "ledge.rail-favourite:"
+        case railTab = "ledge.rail-tab:"
+        case railNote = "ledge.rail-note:"
+    }
 
     /// What is being dragged around the rail.
     enum Item: Equatable {
@@ -30,57 +37,23 @@ enum SiteDragPayload {
         case note(UUID)
     }
 
-    static func encode(_ id: UUID) -> String {
-        homeFavouritePrefix + id.uuidString
+    static func encode(_ kind: Kind, _ id: UUID) -> String {
+        kind.rawValue + id.uuidString
     }
 
-    static func encodeHomeNote(_ id: UUID) -> String {
-        homeNotePrefix + id.uuidString
-    }
-
-    static func encodeRailFavourite(_ id: UUID) -> String {
-        railFavouritePrefix + id.uuidString
-    }
-
-    static func encodeRailTab(_ id: UUID) -> String {
-        railTabPrefix + id.uuidString
-    }
-
-    static func encodeRailNote(_ id: UUID) -> String {
-        railNotePrefix + id.uuidString
-    }
-
-    /// Home-only decode, so a rail session cannot reorder shortcut tiles.
-    static func decode(_ string: String) -> UUID? {
+    /// Reads an id only when the payload is the kind asked for.
+    static func decode(_ kind: Kind, from string: String) -> UUID? {
         let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.hasPrefix(homeFavouritePrefix) else { return nil }
-        return UUID(uuidString: String(trimmed.dropFirst(homeFavouritePrefix.count)))
-    }
-
-    /// Notes-grid-only decode, so a favourite cannot be dropped into the notes
-    /// grid (or the reverse) and silently do nothing.
-    static func decodeHomeNote(_ string: String) -> UUID? {
-        let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard trimmed.hasPrefix(homeNotePrefix) else { return nil }
-        return UUID(uuidString: String(trimmed.dropFirst(homeNotePrefix.count)))
+        guard trimmed.hasPrefix(kind.rawValue) else { return nil }
+        return UUID(uuidString: String(trimmed.dropFirst(kind.rawValue.count)))
     }
 
     /// Rail-only decode, so a Home shortcut cannot be dragged into the open
     /// session order before it has actually been opened.
     static func decodeItem(_ string: String) -> Item? {
-        let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.hasPrefix(railFavouritePrefix),
-           let id = UUID(uuidString: String(trimmed.dropFirst(railFavouritePrefix.count))) {
-            return .site(id)
-        }
-        if trimmed.hasPrefix(railTabPrefix),
-           let id = UUID(uuidString: String(trimmed.dropFirst(railTabPrefix.count))) {
-            return .tab(id)
-        }
-        if trimmed.hasPrefix(railNotePrefix),
-           let id = UUID(uuidString: String(trimmed.dropFirst(railNotePrefix.count))) {
-            return .note(id)
-        }
+        if let id = decode(.railFavourite, from: string) { return .site(id) }
+        if let id = decode(.railTab, from: string) { return .tab(id) }
+        if let id = decode(.railNote, from: string) { return .note(id) }
         return nil
     }
 }

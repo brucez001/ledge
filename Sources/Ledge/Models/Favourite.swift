@@ -166,17 +166,7 @@ final class FavouritesStore: ObservableObject {
     /// compact rail, whose icons support drag-to-reorder without showing a
     /// full List edit control.
     func move(id: Favourite.ID, before targetID: Favourite.ID) {
-        guard id != targetID,
-              let sourceIndex = items.firstIndex(where: { $0.id == id }) else { return }
-
-        let movedItem = items.remove(at: sourceIndex)
-        guard let targetIndex = items.firstIndex(where: { $0.id == targetID }) else {
-            items.append(movedItem)
-            persist()
-            return
-        }
-
-        items.insert(movedItem, at: targetIndex)
+        guard items.move(id: id, before: targetID) else { return }
         persist()
     }
 
@@ -184,10 +174,7 @@ final class FavouritesStore: ObservableObject {
     /// express this, so a grid that only drops "before" a tile has no way to
     /// reorder something past the final item without it.
     func moveToEnd(id: Favourite.ID) {
-        guard let sourceIndex = items.firstIndex(where: { $0.id == id }),
-              sourceIndex != items.count - 1 else { return }
-        let movedItem = items.remove(at: sourceIndex)
-        items.append(movedItem)
+        guard items.moveToEnd(id: id) else { return }
         persist()
     }
 
@@ -214,17 +201,7 @@ final class FavouritesStore: ObservableObject {
     /// the lower half of a row means. Dropping after the final row appends,
     /// so this covers the end of the list too.
     func move(id: Favourite.ID, after targetID: Favourite.ID) {
-        guard id != targetID,
-              let sourceIndex = items.firstIndex(where: { $0.id == id }) else { return }
-
-        let movedItem = items.remove(at: sourceIndex)
-        guard let targetIndex = items.firstIndex(where: { $0.id == targetID }) else {
-            items.append(movedItem)
-            persist()
-            return
-        }
-
-        items.insert(movedItem, at: targetIndex + 1)
+        guard items.move(id: id, after: targetID) else { return }
         persist()
     }
 
@@ -232,14 +209,12 @@ final class FavouritesStore: ObservableObject {
     /// alongside dragging because a 36pt target in a narrow rail is fiddly to
     /// hit precisely, and it keeps reordering reachable from the keyboard.
     func moveUp(id: Favourite.ID) {
-        guard let index = items.firstIndex(where: { $0.id == id }), index > 0 else { return }
-        items.swapAt(index, index - 1)
+        guard items.moveUp(id: id) else { return }
         persist()
     }
 
     func moveDown(id: Favourite.ID) {
-        guard let index = items.firstIndex(where: { $0.id == id }), index < items.count - 1 else { return }
-        items.swapAt(index, index + 1)
+        guard items.moveDown(id: id) else { return }
         persist()
     }
 

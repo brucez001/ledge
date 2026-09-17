@@ -223,15 +223,15 @@ final class FavouritesStoreTests: XCTestCase {
 
     /// Text dropped from another app must not be mistaken for a reorder.
     func testDragPayloadRejectsForeignText() {
-        XCTAssertNil(SiteDragPayload.decode("hello"))
-        XCTAssertNil(SiteDragPayload.decode(UUID().uuidString))
-        XCTAssertNil(SiteDragPayload.decode(""))
-        XCTAssertNil(SiteDragPayload.decode("ledge.site:not-a-uuid"))
+        XCTAssertNil(SiteDragPayload.decode(.homeFavourite, from: "hello"))
+        XCTAssertNil(SiteDragPayload.decode(.homeFavourite, from: UUID().uuidString))
+        XCTAssertNil(SiteDragPayload.decode(.homeFavourite, from: ""))
+        XCTAssertNil(SiteDragPayload.decode(.homeFavourite, from: "ledge.site:not-a-uuid"))
     }
 
     func testDragPayloadToleratesSurroundingWhitespace() {
         let id = UUID()
-        XCTAssertEqual(SiteDragPayload.decode("  \(SiteDragPayload.encode(id))\n"), id)
+        XCTAssertEqual(SiteDragPayload.decode(.homeFavourite, from: "  \(SiteDragPayload.encode(.homeFavourite, id))\n"), id)
     }
 
     /// An unreadable payload must be salvaged, not silently overwritten by

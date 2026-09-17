@@ -292,9 +292,9 @@ private struct RailSessionButton: View {
             .onDrag {
                 drop.begin(dragging: entry)
                 let payload = switch entry {
-                case .favourite(let id): SiteDragPayload.encodeRailFavourite(id)
-                case .tab(let id): SiteDragPayload.encodeRailTab(id)
-                case .note(let id): SiteDragPayload.encodeRailNote(id)
+                case .favourite(let id): SiteDragPayload.encode(.railFavourite, id)
+                case .tab(let id): SiteDragPayload.encode(.railTab, id)
+                case .note(let id): SiteDragPayload.encode(.railNote, id)
                 }
                 return NSItemProvider(object: payload as NSString)
             }
@@ -392,7 +392,7 @@ private struct RailNoteButton: View {
                 .contentShape(Rectangle())
                 .onDrag {
                     drop.begin(dragging: entry)
-                    return NSItemProvider(object: SiteDragPayload.encodeRailNote(tab.note.id) as NSString)
+                    return NSItemProvider(object: SiteDragPayload.encode(.railNote, tab.note.id) as NSString)
                 }
         }
         .buttonStyle(RailButtonBackgroundStyle(isHovering: isHovering, isSelected: isActive))

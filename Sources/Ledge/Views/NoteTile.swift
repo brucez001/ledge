@@ -19,7 +19,6 @@ struct NoteTile: View {
 
     @State private var isHovering = false
     @State private var isConfirmingDelete = false
-    @State private var isDropTargeted = false
 
     var body: some View {
         Button(action: open) {
@@ -71,24 +70,11 @@ struct NoteTile: View {
             // Inside the button's label, not on the button: the button's press
             // gesture claims the press-and-move sequence, so a drag attached
             // outside it never starts a drag session.
-            .draggable(SiteDragPayload.encodeHomeNote(note.id))
+            .draggable(SiteDragPayload.encode(.homeNote, note.id))
         }
         .buttonStyle(TilePressStyle(isHovering: isHovering))
         .onHover { isHovering = $0 }
-        .overlay(alignment: .leading) {
-            GridInsertionLine(isShowing: isDropTargeted)
-                .offset(x: -Theme.Metrics.tileGap / 2)
-        }
-        .padding(.horizontal, Theme.Metrics.tileGap / 2)
-        .dropDestination(for: String.self) { payloads, _ in
-            guard let onDropNote,
-                  let draggedID = payloads.compactMap(SiteDragPayload.decodeHomeNote).first else {
-                return false
-            }
-            onDropNote(draggedID)
-            return true
-        } isTargeted: { isDropTargeted = $0 }
-        .padding(.horizontal, -Theme.Metrics.tileGap / 2)
+        .homeGridDropTarget(decoding: { SiteDragPayload.decode(.homeNote, from: $0) }, perform: onDropNote)
         .contextMenu {
             NoteMenuItems(open: open) { isConfirmingDelete = true }
         }
@@ -108,7 +94,6 @@ struct NewNoteTile: View {
     var onDropNote: ((UUID) -> Void)?
 
     @State private var isHovering = false
-    @State private var isDropTargeted = false
 
     var body: some View {
         Button(action: action) {
@@ -138,19 +123,6 @@ struct NewNoteTile: View {
         .onHover { isHovering = $0 }
         .accessibilityLabel("Create a new note")
         .help("New note (⌘N)")
-        .overlay(alignment: .leading) {
-            GridInsertionLine(isShowing: isDropTargeted)
-                .offset(x: -Theme.Metrics.tileGap / 2)
-        }
-        .padding(.horizontal, Theme.Metrics.tileGap / 2)
-        .dropDestination(for: String.self) { payloads, _ in
-            guard let onDropNote,
-                  let draggedID = payloads.compactMap(SiteDragPayload.decodeHomeNote).first else {
-                return false
-            }
-            onDropNote(draggedID)
-            return true
-        } isTargeted: { isDropTargeted = $0 }
-        .padding(.horizontal, -Theme.Metrics.tileGap / 2)
+        .homeGridDropTarget(decoding: { SiteDragPayload.decode(.homeNote, from: $0) }, perform: onDropNote)
     }
 }

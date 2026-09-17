@@ -114,28 +114,16 @@ final class NoteStore: ObservableObject {
     /// edited first" to an order the user owns. From then on editing a note no
     /// longer moves its tile, which is the whole point of arranging them.
     func move(id: Note.ID, before targetID: Note.ID) {
-        guard id != targetID else { return }
-        var ids = notes.map(\.id)
-        guard let sourceIndex = ids.firstIndex(of: id) else { return }
-        let moved = ids.remove(at: sourceIndex)
-        if let targetIndex = ids.firstIndex(of: targetID) {
-            ids.insert(moved, at: targetIndex)
-        } else {
-            ids.append(moved)
-        }
-        storedOrder = ids
-        resort()
+        guard notes.move(id: id, before: targetID) else { return }
+        storedOrder = notes.map(\.id)
     }
 
     /// Moves one note to the end. `move(id:before:)` cannot express this, so a
     /// grid that only drops "before" a tile cannot otherwise reach the last
     /// position.
     func moveToEnd(id: Note.ID) {
-        var ids = notes.map(\.id)
-        guard let sourceIndex = ids.firstIndex(of: id), sourceIndex != ids.count - 1 else { return }
-        ids.append(ids.remove(at: sourceIndex))
-        storedOrder = ids
-        resort()
+        guard notes.moveToEnd(id: id) else { return }
+        storedOrder = notes.map(\.id)
     }
 
     // MARK: - Loading
