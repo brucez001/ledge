@@ -8,6 +8,7 @@ struct FavouriteTile: View {
 
     @State private var isHovering = false
     @State private var isConfirmingRemoval = false
+    @State private var isDropTargeted = false
 
     var body: some View {
         Button {
@@ -34,26 +35,33 @@ struct FavouriteTile: View {
                     .stroke(isActive ? Color.accentColor.opacity(0.9) : Theme.hairline, lineWidth: isActive ? 2 : 1)
             }
             .tileHoverShadow(isHovering: isHovering)
+            // Inside the button's label, not on the button: SwiftUI's button
+            // press gesture claims the whole press-and-move sequence, so a
+            // drag modifier attached outside it never starts a drag session.
+            .draggable(SiteDragPayload.encode(item.id))
         }
         .buttonStyle(TilePressStyle(isHovering: isHovering))
         .onHover { isHovering = $0 }
-        .onDrag {
-            NSItemProvider(object: SiteDragPayload.encode(item.id) as NSString)
+        // A dropped tile lands *before* this one, so the indicator sits on the
+        // leading edge, in the gap between tiles rather than over the target.
+        .overlay(alignment: .leading) {
+            GridInsertionLine(isShowing: isDropTargeted)
+                .offset(x: -Theme.Metrics.tileGap / 2)
         }
-        .onDrop(of: [SiteDragPayload.type], isTargeted: nil) { providers in
-            // Simple, robust drop handling: read back the dragged
-            // favourite's UUID and re-insert it directly before this tile.
-            // No live drag-preview reordering, just a clean drop-to-reorder.
-            guard let provider = providers.first else { return false }
-            provider.loadObject(ofClass: NSString.self) { reading, _ in
-                guard let string = reading as? String,
-                      let draggedID = SiteDragPayload.decode(string) else { return }
-                Task { @MainActor in
-                    controller.favourites.move(id: draggedID, before: item.id)
-                }
+        // Widened into the gaps either side, then shrunk back so the grid
+        // lays out unchanged. Without this the gap a drop is aimed at -- the
+        // gap the indicator is drawn in -- accepts nothing, and the release
+        // animates the tile back to where it came from.
+        .padding(.horizontal, Theme.Metrics.tileGap / 2)
+        .dropDestination(for: String.self) { payloads, _ in
+            // Re-inserts the dragged favourite directly before this tile.
+            guard let draggedID = payloads.compactMap(SiteDragPayload.decode).first else {
+                return false
             }
+            controller.favourites.move(id: draggedID, before: item.id)
             return true
-        }
+        } isTargeted: { isDropTargeted = $0 }
+        .padding(.horizontal, -Theme.Metrics.tileGap / 2)
         .contextMenu {
             FavouriteMenuItems(
                 controller: controller,
@@ -74,9 +82,7 @@ struct AddTile: View {
     /// Dropping a dragged favourite here moves it to the end of the grid.
     /// Tiles can only accept a drop "before themselves", so without this
     /// there is no way to reorder something past the final item.
-    /// Typed `@MainActor @Sendable` because `NSItemProvider` delivers its
-    /// result on an arbitrary queue.
-    var onDropFavourite: (@MainActor @Sendable (UUID) -> Void)?
+    var onDropFavourite: ((UUID) -> Void)?
 
     @State private var isHovering = false
     @State private var isDropTargeted = false
@@ -90,10 +96,7 @@ struct AddTile: View {
                 .background(isHovering ? Theme.cardHover : Theme.card.opacity(0.6), in: RoundedRectangle(cornerRadius: Theme.Metrics.cardCornerRadius, style: .continuous))
                 .overlay {
                     RoundedRectangle(cornerRadius: Theme.Metrics.cardCornerRadius, style: .continuous)
-                        .stroke(
-                            isDropTargeted ? Color.accentColor.opacity(0.9) : Theme.hairline,
-                            lineWidth: isDropTargeted ? 2 : 1
-                        )
+                        .stroke(Theme.hairline, lineWidth: 1)
                 }
                 .scaleEffect(isHovering ? 1.02 : 1)
         }
@@ -101,14 +104,21 @@ struct AddTile: View {
         .onHover { isHovering = $0 }
         .accessibilityLabel("Add favourite")
         .help("Add a favourite site")
-        .onDrop(of: [SiteDragPayload.type], isTargeted: $isDropTargeted) { providers in
-            guard let onDropFavourite, let provider = providers.first else { return false }
-            provider.loadObject(ofClass: NSString.self) { reading, _ in
-                guard let string = reading as? String,
-                      let draggedID = SiteDragPayload.decode(string) else { return }
-                Task { @MainActor in onDropFavourite(draggedID) }
-            }
-            return true
+        // Dropping here sends the tile to the end of the grid, so the line
+        // marks the position *after* the last favourite.
+        .overlay(alignment: .leading) {
+            GridInsertionLine(isShowing: isDropTargeted)
+                .offset(x: -Theme.Metrics.tileGap / 2)
         }
+        .padding(.horizontal, Theme.Metrics.tileGap / 2)
+        .dropDestination(for: String.self) { payloads, _ in
+            guard let onDropFavourite,
+                  let draggedID = payloads.compactMap(SiteDragPayload.decode).first else {
+                return false
+            }
+            onDropFavourite(draggedID)
+            return true
+        } isTargeted: { isDropTargeted = $0 }
+        .padding(.horizontal, -Theme.Metrics.tileGap / 2)
     }
 }

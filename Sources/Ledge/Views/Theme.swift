@@ -131,6 +131,9 @@ enum Theme {
         /// row's hover background.
         static let railIconSize: CGFloat = 22
         static let tileSize: CGFloat = 104
+        /// Gap between tiles on the home grid. Shared with the drop indicator,
+        /// which is drawn centred in this gap.
+        static let tileGap: CGFloat = 20
         static let toolbarHeight: CGFloat = 52
         /// Height of the browser toolbar's address pill (narrower than the
         /// full toolbar so it reads as a control, not a second bar).

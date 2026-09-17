@@ -21,7 +21,7 @@ struct LauncherHome: View {
     }
 
     private let columns = [
-        GridItem(.adaptive(minimum: Theme.Metrics.tileSize, maximum: Theme.Metrics.tileSize), spacing: 20, alignment: .leading)
+        GridItem(.adaptive(minimum: Theme.Metrics.tileSize, maximum: Theme.Metrics.tileSize), spacing: Theme.Metrics.tileGap, alignment: .leading)
     ]
 
     private var trimmedQuery: String {
