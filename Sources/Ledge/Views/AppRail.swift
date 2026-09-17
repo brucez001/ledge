@@ -195,7 +195,13 @@ struct AppRail: View {
 
             Divider()
 
-            SettingsLink { Text("Settings…") }
+            // Not `SettingsLink`: every route to Settings has to mark the
+            // presentation as requested, or the launch-time guard in
+            // `SettingsPresentation` closes the window the user just asked
+            // for. Deferred a turn so this menu finishes tracking first.
+            Button("Settings…") {
+                Task { @MainActor in SettingsPresentation.open() }
+            }
 
             Divider()
 

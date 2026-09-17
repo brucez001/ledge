@@ -238,24 +238,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         // Wait until the status-bar menu has finished tracking before asking
         // SwiftUI to present another window.
         DispatchQueue.main.async { [weak self] in
-            NSApp.activate(ignoringOtherApps: true)
-
-            // Use SwiftUI's own Settings command from the application menu.
-            // Unlike the private showSettingsWindow: selector, this does not
-            // report success and then silently discard the request.
-            if let appMenu = NSApp.mainMenu?.item(at: 0)?.submenu,
-               let settingsIndex = appMenu.items.firstIndex(where: {
-                   $0.keyEquivalent == ","
-                       && $0.keyEquivalentModifierMask.contains(.command)
-               }) {
-                appMenu.performActionForItem(at: settingsIndex)
-                return
-            }
-
-            // Compatibility fallback if SwiftUI ever stops assigning ⌘, to
-            // its Settings command.
-            if NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil) { return }
-            if NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil) { return }
+            if SettingsPresentation.open() { return }
             self?.panelController.show()
         }
     }
