@@ -26,10 +26,27 @@ final class NoteStore: ObservableObject {
 
     private let directory: URL
     private let fileManager: FileManager
+    private let defaults: UserDefaults
+    private let orderKey = "ledge.noteOrder"
 
-    /// `directory` is injectable so tests never touch real user files.
-    init(directory: URL? = nil, fileManager: FileManager = .default) {
+    /// The order the user has arranged the Home grid into, empty until the
+    /// first drag. Held in memory and written through, so sorting never reads
+    /// the preference store.
+    private var storedOrder: [UUID] {
+        didSet { defaults.set(storedOrder.map(\.uuidString), forKey: orderKey) }
+    }
+
+    /// `directory` and `defaults` are injectable so tests never touch real
+    /// user files or preferences.
+    init(
+        directory: URL? = nil,
+        fileManager: FileManager = .default,
+        defaults: UserDefaults = .standard
+    ) {
         self.fileManager = fileManager
+        self.defaults = defaults
+        self.storedOrder = (defaults.array(forKey: orderKey) as? [String] ?? [])
+            .compactMap(UUID.init(uuidString:))
         self.directory = directory ?? Self.defaultDirectory
         try? fileManager.createDirectory(at: self.directory, withIntermediateDirectories: true)
         load()
@@ -52,6 +69,12 @@ final class NoteStore: ObservableObject {
             updatedAt: Date()
         )
         write(note)
+        // A grid the user has arranged sorts arranged notes first, so without
+        // this a brand-new note would appear last -- behind notes it is newer
+        // than -- rather than where they are looking.
+        if !storedOrder.isEmpty {
+            storedOrder = [note.id] + storedOrder
+        }
         insert(note)
         return note
     }
@@ -74,10 +97,45 @@ final class NoteStore: ObservableObject {
     func delete(_ note: Note) {
         try? fileManager.removeItem(at: fileURL(for: note.id))
         notes.removeAll { $0.id == note.id }
+        if !storedOrder.isEmpty {
+            storedOrder = storedOrder.filter { $0 != note.id }
+        }
     }
 
     func note(withID id: Note.ID) -> Note? {
         notes.first { $0.id == id }
+    }
+
+    // MARK: - Ordering
+
+    /// Moves one note directly before another on the Home grid.
+    ///
+    /// The first such move is what switches this grid from "most recently
+    /// edited first" to an order the user owns. From then on editing a note no
+    /// longer moves its tile, which is the whole point of arranging them.
+    func move(id: Note.ID, before targetID: Note.ID) {
+        guard id != targetID else { return }
+        var ids = notes.map(\.id)
+        guard let sourceIndex = ids.firstIndex(of: id) else { return }
+        let moved = ids.remove(at: sourceIndex)
+        if let targetIndex = ids.firstIndex(of: targetID) {
+            ids.insert(moved, at: targetIndex)
+        } else {
+            ids.append(moved)
+        }
+        storedOrder = ids
+        resort()
+    }
+
+    /// Moves one note to the end. `move(id:before:)` cannot express this, so a
+    /// grid that only drops "before" a tile cannot otherwise reach the last
+    /// position.
+    func moveToEnd(id: Note.ID) {
+        var ids = notes.map(\.id)
+        guard let sourceIndex = ids.firstIndex(of: id), sourceIndex != ids.count - 1 else { return }
+        ids.append(ids.remove(at: sourceIndex))
+        storedOrder = ids
+        resort()
     }
 
     // MARK: - Loading
@@ -91,7 +149,7 @@ final class NoteStore: ObservableObject {
         notes = urls
             .filter { $0.pathExtension.lowercased() == "md" }
             .compactMap(loadNote(from:))
-            .sorted { $0.updatedAt > $1.updatedAt }
+        resort()
     }
 
     /// Reads one note file. A missing UUID in the filename or undecodable
@@ -170,6 +228,28 @@ final class NoteStore: ObservableObject {
     }
 
     private func resort() {
-        notes.sort { $0.updatedAt > $1.updatedAt }
+        notes = Self.ordered(notes, by: storedOrder)
+    }
+
+    /// Arranged notes first, in the stored order; everything else after them,
+    /// most recently edited first.
+    ///
+    /// A stored order can name notes that no longer exist and omit notes
+    /// created since, so it is treated as a preference rather than a
+    /// definition: unknown ids are ignored and unlisted notes still appear.
+    static func ordered(_ notes: [Note], by order: [UUID]) -> [Note] {
+        guard !order.isEmpty else { return notes.sorted { $0.updatedAt > $1.updatedAt } }
+        let rank = Dictionary(
+            order.enumerated().map { ($0.element, $0.offset) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        return notes.sorted { lhs, rhs in
+            switch (rank[lhs.id], rank[rhs.id]) {
+            case let (lhsRank?, rhsRank?): lhsRank < rhsRank
+            case (_?, nil): true
+            case (nil, _?): false
+            case (nil, nil): lhs.updatedAt > rhs.updatedAt
+            }
+        }
     }
 }

@@ -1,15 +1,21 @@
 import Foundation
 import UniformTypeIdentifiers
 
-/// The drag payload used to reorder open rail rows (sessions and note tabs).
+/// The drag payload used to reorder tiles on the home grids and rows in the
+/// rail.
 ///
 /// It rides on plain text (which needs no declared custom type) but is
 /// prefixed, so a stray drop of text from another app cannot be mistaken for a
 /// reorder, and dragging a site into a text field produces something
 /// recognisable rather than a bare UUID.
+///
+/// The prefix is also the only thing separating one grid from another: both
+/// home grids accept plain text, so each decodes only its own prefix and
+/// declines everything else.
 enum SiteDragPayload {
     static let type = UTType.plainText
     private static let homeFavouritePrefix = "ledge.home-favourite:"
+    private static let homeNotePrefix = "ledge.home-note:"
     private static let railFavouritePrefix = "ledge.rail-favourite:"
     private static let railTabPrefix = "ledge.rail-tab:"
     private static let railNotePrefix = "ledge.rail-note:"
@@ -26,6 +32,10 @@ enum SiteDragPayload {
 
     static func encode(_ id: UUID) -> String {
         homeFavouritePrefix + id.uuidString
+    }
+
+    static func encodeHomeNote(_ id: UUID) -> String {
+        homeNotePrefix + id.uuidString
     }
 
     static func encodeRailFavourite(_ id: UUID) -> String {
@@ -45,6 +55,14 @@ enum SiteDragPayload {
         let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.hasPrefix(homeFavouritePrefix) else { return nil }
         return UUID(uuidString: String(trimmed.dropFirst(homeFavouritePrefix.count)))
+    }
+
+    /// Notes-grid-only decode, so a favourite cannot be dropped into the notes
+    /// grid (or the reverse) and silently do nothing.
+    static func decodeHomeNote(_ string: String) -> UUID? {
+        let trimmed = string.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.hasPrefix(homeNotePrefix) else { return nil }
+        return UUID(uuidString: String(trimmed.dropFirst(homeNotePrefix.count)))
     }
 
     /// Rail-only decode, so a Home shortcut cannot be dragged into the open

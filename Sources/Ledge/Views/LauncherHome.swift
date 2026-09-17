@@ -297,12 +297,17 @@ struct LauncherHome: View {
                 ForEach(noteStore.notes) { note in
                     NoteTile(
                         note: note,
+                        preview: note.preview,
                         isOpen: noteController.openNoteIDs.contains(note.id),
                         open: { controller.openNote(note) },
-                        delete: { controller.deleteSavedNote(note) }
+                        delete: { controller.deleteSavedNote(note) },
+                        onDropNote: { noteStore.move(id: $0, before: note.id) }
                     )
                 }
-                NewNoteTile(action: controller.openNewNote)
+                NewNoteTile(
+                    action: controller.openNewNote,
+                    onDropNote: { noteStore.moveToEnd(id: $0) }
+                )
             }
             .padding(.top, 24)
             .padding(.bottom, 40)

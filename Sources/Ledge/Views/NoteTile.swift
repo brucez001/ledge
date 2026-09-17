@@ -6,12 +6,20 @@ import SwiftUI
 /// it removes the file rather than just closing the tab.
 struct NoteTile: View {
     let note: Note
+    /// Passed in rather than read from `note`, because `Note.preview` scans the
+    /// body's Markdown and this view re-evaluates on every hover and drop-target
+    /// change. Computed by the grid instead, which only changes with the data.
+    let preview: String
     let isOpen: Bool
     let open: () -> Void
     let delete: () -> Void
+    /// Drops a dragged note directly before this one. Omitted by callers that
+    /// show notes without letting them be arranged.
+    var onDropNote: ((UUID) -> Void)?
 
     @State private var isHovering = false
     @State private var isConfirmingDelete = false
+    @State private var isDropTargeted = false
 
     var body: some View {
         Button(action: open) {
@@ -40,7 +48,7 @@ struct NoteTile: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
 
-                Text(note.preview)
+                Text(preview)
                     .font(.system(size: 11))
                     .foregroundStyle(Theme.inkSecondary)
                     .lineLimit(2)
@@ -60,9 +68,27 @@ struct NoteTile: View {
             // Same lift and shadow as a favourite tile: the two grids are
             // one surface, so they must answer the pointer identically.
             .tileHoverShadow(isHovering: isHovering)
+            // Inside the button's label, not on the button: the button's press
+            // gesture claims the press-and-move sequence, so a drag attached
+            // outside it never starts a drag session.
+            .draggable(SiteDragPayload.encodeHomeNote(note.id))
         }
         .buttonStyle(TilePressStyle(isHovering: isHovering))
         .onHover { isHovering = $0 }
+        .overlay(alignment: .leading) {
+            GridInsertionLine(isShowing: isDropTargeted)
+                .offset(x: -Theme.Metrics.tileGap / 2)
+        }
+        .padding(.horizontal, Theme.Metrics.tileGap / 2)
+        .dropDestination(for: String.self) { payloads, _ in
+            guard let onDropNote,
+                  let draggedID = payloads.compactMap(SiteDragPayload.decodeHomeNote).first else {
+                return false
+            }
+            onDropNote(draggedID)
+            return true
+        } isTargeted: { isDropTargeted = $0 }
+        .padding(.horizontal, -Theme.Metrics.tileGap / 2)
         .contextMenu {
             NoteMenuItems(open: open) { isConfirmingDelete = true }
         }
@@ -76,8 +102,13 @@ struct NoteTile: View {
 /// favourites grid's `AddTile`.
 struct NewNoteTile: View {
     let action: () -> Void
+    /// Dropping a dragged note here moves it to the end of the grid. Tiles can
+    /// only accept a drop "before themselves", so without this there is no way
+    /// to move a note past the final one.
+    var onDropNote: ((UUID) -> Void)?
 
     @State private var isHovering = false
+    @State private var isDropTargeted = false
 
     var body: some View {
         Button(action: action) {
@@ -107,5 +138,19 @@ struct NewNoteTile: View {
         .onHover { isHovering = $0 }
         .accessibilityLabel("Create a new note")
         .help("New note (⌘N)")
+        .overlay(alignment: .leading) {
+            GridInsertionLine(isShowing: isDropTargeted)
+                .offset(x: -Theme.Metrics.tileGap / 2)
+        }
+        .padding(.horizontal, Theme.Metrics.tileGap / 2)
+        .dropDestination(for: String.self) { payloads, _ in
+            guard let onDropNote,
+                  let draggedID = payloads.compactMap(SiteDragPayload.decodeHomeNote).first else {
+                return false
+            }
+            onDropNote(draggedID)
+            return true
+        } isTargeted: { isDropTargeted = $0 }
+        .padding(.horizontal, -Theme.Metrics.tileGap / 2)
     }
 }
