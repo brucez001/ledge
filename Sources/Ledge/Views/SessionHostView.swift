@@ -82,6 +82,9 @@ final class SessionHostContainerView: NSView {
         var current: [SessionKind: NSView] = [:]
 
         for session in sessions {
+            // A restored session owns no web view until it is selected, so
+            // mounting the list must not be what creates one.
+            guard session.isMaterialised || session.id == activeID else { continue }
             let webView = session.webView
             if webView.superview !== self {
                 webView.translatesAutoresizingMaskIntoConstraints = false
@@ -102,7 +105,7 @@ final class SessionHostContainerView: NSView {
         // Home favourite is added or removed), and a key-based sweep would tear that
         // web view out of the hierarchy -- breaking the invariant that a live
         // session is never unmounted.
-        let liveViews = Set(sessions.map { ObjectIdentifier($0.webView) })
+        let liveViews = Set(sessions.compactMap(\.openedWebView).map(ObjectIdentifier.init))
         for view in installedWebViews.values where !liveViews.contains(ObjectIdentifier(view)) {
             view.removeFromSuperview()
         }

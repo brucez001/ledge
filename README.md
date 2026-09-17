@@ -51,6 +51,8 @@ I obtain one. Building from source following the steps below also avoids them.
 - Keep the panel open persistently when you need it.
 - Turn off reveal on edge hover when it becomes annoying.
 - Save favourite sites for quick access.
+- Pick up where you left off: the sidebar comes back after a restart, and a
+  restored site loads only once you select it.
 - Take quick Markdown notes with **⌘N** — they open as tabs beside your
   sessions, styled as you type, with a rendered preview on **⇧⌘P**.
 - Notes are saved on your Mac as plain Markdown files and never leave it.

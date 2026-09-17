@@ -40,6 +40,35 @@ final class SessionManager: ObservableObject {
         return session
     }
 
+    /// Rebuilds rail rows from a previous launch without loading any of them.
+    ///
+    /// Each row becomes a session that owns no `WKWebView` until it is
+    /// selected. Called once, before anything else opens a session.
+    func restore(_ restored: [OpenSessionsStore.OpenSession]) {
+        guard sessions.isEmpty else { return }
+        for entry in restored {
+            let kind: SessionKind = entry.favouriteID.map(SessionKind.favourite) ?? .tab(UUID())
+            guard sessionsByKind[kind] == nil else { continue }
+            let session = makeSession(kind: kind)
+            session.prepareRestored(url: entry.url, title: entry.title, iconHost: entry.iconHost)
+            register(session)
+        }
+    }
+
+    /// The rail's current rows, in order, for the next launch. Sessions with
+    /// nothing loaded yet -- a blank new tab -- have nothing to restore.
+    var restorableSessions: [OpenSessionsStore.OpenSession] {
+        sessions.compactMap { session in
+            guard let url = session.currentURL else { return nil }
+            return OpenSessionsStore.OpenSession(
+                favouriteID: session.id.favouriteID,
+                url: url,
+                title: session.pageTitle,
+                iconHost: session.iconHost
+            )
+        }
+    }
+
     /// Ordinary tabs in their current rail order.
     var tabSessions: [WebSession] {
         sessions.filter { $0.id.tabID != nil }
@@ -103,8 +132,10 @@ final class SessionManager: ObservableObject {
     func closeSession(kind: SessionKind) {
         guard let session = sessionsByKind.removeValue(forKey: kind) else { return }
         sessions.removeAll { $0.id == kind }
-        session.webView.stopLoading()
-        session.webView.removeFromSuperview()
+        // A restored session the user never opened has nothing to tear down,
+        // and closing it must not be what builds its web view.
+        session.openedWebView?.stopLoading()
+        session.openedWebView?.removeFromSuperview()
         if activeSessionID == kind {
             activeSessionID = nil
         }

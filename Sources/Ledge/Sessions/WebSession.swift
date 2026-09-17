@@ -17,7 +17,37 @@ final class WebSession: NSObject, ObservableObject {
     /// Not `let`: adding or removing a Home favourite changes the session's
     /// association without rebuilding its web view.
     private(set) var id: SessionKind
-    let webView: WKWebView
+
+    /// Created on first use, not in `init`.
+    ///
+    /// A session restored at launch exists in the rail with its title and
+    /// icon but owns no `WKWebView` and has loaded nothing. Touching
+    /// `webView` is what commits to a real web view, so anything that merely
+    /// lists or tidies sessions must go through `openedWebView` instead.
+    private var materialisedWebView: WKWebView?
+    private let dataStore: WKWebsiteDataStore
+    /// Where a restored session will navigate when it is first shown.
+    private var pendingURL: URL?
+
+    var webView: WKWebView {
+        if let materialisedWebView { return materialisedWebView }
+        let webView = makeWebView()
+        // Assigned before loading: `load` reads `webView`, which would
+        // otherwise recurse.
+        materialisedWebView = webView
+        observe(webView)
+        if let pendingURL {
+            self.pendingURL = nil
+            load(pendingURL)
+        }
+        return webView
+    }
+
+    /// The web view only if one exists. Never creates one.
+    var openedWebView: WKWebView? { materialisedWebView }
+
+    /// False while a restored session is still just a row in the rail.
+    var isMaterialised: Bool { materialisedWebView != nil }
 
     @Published var canGoBack = false
     @Published var canGoForward = false
@@ -62,7 +92,21 @@ final class WebSession: NSObject, ObservableObject {
         dataStore: WKWebsiteDataStore
     ) {
         self.id = kind
+        self.dataStore = dataStore
+        super.init()
+    }
 
+    /// Restores a session's appearance without loading anything: the rail can
+    /// draw its title and icon, and the page is fetched only once the user
+    /// selects it.
+    func prepareRestored(url: URL?, title: String, iconHost: String?) {
+        pendingURL = url
+        currentURL = url
+        pageTitle = title
+        self.iconHost = iconHost
+    }
+
+    private func makeWebView() -> WKWebView {
         let configuration = WKWebViewConfiguration()
         configuration.websiteDataStore = dataStore
         configuration.defaultWebpagePreferences.allowsContentJavaScript = true
@@ -80,10 +124,10 @@ final class WebSession: NSObject, ObservableObject {
         // Keeps the area around a short page in step with the panel instead
         // of flashing plain white inside a dark surface.
         webView.underPageBackgroundColor = .clear
-        self.webView = webView
+        return webView
+    }
 
-        super.init()
-
+    private func observe(_ webView: WKWebView) {
         webView.navigationDelegate = self
         webView.uiDelegate = self
         progressObserver = webView.observe(\.estimatedProgress, options: [.new]) { [weak self] observedWebView, _ in

@@ -8,8 +8,8 @@ import Foundation
 /// entry points they need -- `⌘N`, the Home tiles, and the menu-bar Notes
 /// list.
 ///
-/// Note tabs are exactly like sessions: they live in memory, appear in the
-/// rail in open order, and are never restored across launches. The notes
+/// Note tabs are exactly like sessions: they appear in the rail in open
+/// order, and the rail they formed is rebuilt at the next launch. The notes
 /// themselves are plain files owned by `NoteStore`.
 @MainActor
 final class NoteController: ObservableObject {
@@ -49,6 +49,21 @@ final class NoteController: ObservableObject {
 
     func tab(for id: UUID) -> NoteTab? {
         tabs.first { $0.note.id == id }
+    }
+
+    /// Reopens the tabs a previous launch left in the rail, skipping any note
+    /// whose file has since gone. Called once, before anything else opens one.
+    func restore(_ ids: [UUID]) {
+        guard tabs.isEmpty else { return }
+        for id in ids {
+            guard let note = store.note(withID: id) else { continue }
+            open(note)
+        }
+    }
+
+    /// Open tabs in rail order, for the next launch.
+    var restorableNoteIDs: [UUID] {
+        tabs.map(\.note.id)
     }
 
     /// ⌘W on a note tab: save and close it. The note itself stays on disk.

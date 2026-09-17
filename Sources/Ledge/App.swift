@@ -42,6 +42,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItemController = StatusItemController(panelController: panelController)
         statusItemController?.install()
 
+        // Before the panel is shown, so the rail is already populated rather
+        // than filling in underneath the user.
+        panelController.restoreRail()
+
         // Show the panel on the very first launch so the app is discoverable,
         // but on later launches (especially as a login item) come up armed and
         // hidden instead of flinging the panel open over whatever the user is
@@ -83,6 +87,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Notes autosave on a debounce; flush any pending draft so quitting
         // mid-keystroke can never lose the last few characters.
         panelController.noteController.saveAllOpen()
+        panelController.saveRail()
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {

@@ -89,6 +89,7 @@ final class PanelController: NSObject, ObservableObject {
     let sessionManager = SessionManager()
     let favourites = FavouritesStore()
     let noteController = NoteController()
+    private let openSessions = OpenSessionsStore()
     let preferences = Preferences.shared
 
     private var panel: NSPanel?
@@ -1138,6 +1139,39 @@ final class PanelController: NSObject, ObservableObject {
         let group = railGroup(containing: entry)
         guard let reordered = RailLayout.moved(entry, by: offset, in: group) else { return }
         applyRailOrder(reordered)
+    }
+
+    // MARK: - Rail restoration
+
+    /// Rebuilds the rail from the previous launch. Rows appear immediately;
+    /// the pages behind them load only when the user selects one.
+    func restoreRail() {
+        let favouriteIDs = Set(favourites.items.map(\.id))
+        sessionManager.restore(
+            OpenSessionsStore.reconciled(openSessions.loadSessions(), against: favouriteIDs)
+        )
+        let existingNotes = Set(noteController.store.notes.map(\.id))
+        noteController.restore(
+            OpenSessionsStore.reconciledNoteTabs(openSessions.loadNoteTabs(), against: existingNotes)
+        )
+
+        // Opening, closing and reordering are the structural changes worth
+        // surviving a force quit; `applicationWillTerminate` catches the
+        // pages a session navigated to in between.
+        sessionManager.$sessions
+            .dropFirst()
+            .sink { [weak self] _ in self?.saveRail() }
+            .store(in: &cancellables)
+        noteController.$tabs
+            .dropFirst()
+            .sink { [weak self] _ in self?.saveRail() }
+            .store(in: &cancellables)
+    }
+
+    /// Records the rail for the next launch.
+    func saveRail() {
+        openSessions.saveSessions(sessionManager.restorableSessions)
+        openSessions.saveNoteTabs(noteController.restorableNoteIDs)
     }
 
     func railGroup(containing entry: RailEntry) -> [RailEntry] {
