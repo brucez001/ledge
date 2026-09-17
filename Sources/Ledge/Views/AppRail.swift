@@ -286,6 +286,18 @@ private struct RailSessionButton: View {
             }
             .frame(width: Theme.Metrics.railItemSize, height: Theme.Metrics.railItemSize)
             .contentShape(Rectangle())
+            // Inside the button's label: the button's press gesture claims the
+            // press-and-move sequence, so a drag attached outside it never
+            // starts a drag session.
+            .onDrag {
+                drop.begin(dragging: entry)
+                let payload = switch entry {
+                case .favourite(let id): SiteDragPayload.encodeRailFavourite(id)
+                case .tab(let id): SiteDragPayload.encodeRailTab(id)
+                case .note(let id): SiteDragPayload.encodeRailNote(id)
+                }
+                return NSItemProvider(object: payload as NSString)
+            }
         }
         .buttonStyle(RailButtonBackgroundStyle(isHovering: isHovering, isSelected: isActive))
         .onHover { isHovering = $0 }
@@ -295,15 +307,6 @@ private struct RailSessionButton: View {
                 ? "New session"
                 : (isActive ? "Current session: \(tooltip)" : "Session: \(tooltip)")
         )
-        .onDrag {
-            drop.begin(dragging: entry)
-            let payload = switch entry {
-            case .favourite(let id): SiteDragPayload.encodeRailFavourite(id)
-            case .tab(let id): SiteDragPayload.encodeRailTab(id)
-            case .note(let id): SiteDragPayload.encodeRailNote(id)
-            }
-            return NSItemProvider(object: payload as NSString)
-        }
         .padding(.vertical, Theme.Metrics.railRowSpacing / 2)
         .overlay(alignment: .top) {
             RailInsertionLine(drop: drop, entry: entry, isBelow: false)
@@ -387,6 +390,10 @@ private struct RailNoteButton: View {
                 .foregroundStyle(isActive ? Color.accentColor : Theme.inkSecondary)
                 .frame(width: Theme.Metrics.railItemSize, height: Theme.Metrics.railItemSize)
                 .contentShape(Rectangle())
+                .onDrag {
+                    drop.begin(dragging: entry)
+                    return NSItemProvider(object: SiteDragPayload.encodeRailNote(tab.note.id) as NSString)
+                }
         }
         .buttonStyle(RailButtonBackgroundStyle(isHovering: isHovering, isSelected: isActive))
         .onHover { isHovering = $0 }
@@ -394,10 +401,6 @@ private struct RailNoteButton: View {
         // Ledge's own card rather than `.help()`: see `RailHoverCard.swift`.
         .railHoverCard(id: tab.note.id, title: tab.displayTitle, subtitle: preview, isShowing: isHovering)
         .accessibilityLabel(isActive ? "Current note: \(tab.displayTitle)" : "Note: \(tab.displayTitle)")
-        .onDrag {
-            drop.begin(dragging: entry)
-            return NSItemProvider(object: SiteDragPayload.encodeRailNote(tab.note.id) as NSString)
-        }
         .padding(.vertical, Theme.Metrics.railRowSpacing / 2)
         .overlay(alignment: .top) {
             RailInsertionLine(drop: drop, entry: entry, isBelow: false)
