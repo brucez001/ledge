@@ -64,6 +64,34 @@ enum AppearanceMode: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
+/// Light/dark handling for terminal tabs, which can differ from the rest of
+/// the panel: plenty of people want a light browser beside a dark terminal.
+enum TerminalAppearance: String, CaseIterable, Identifiable, Sendable {
+    /// Whatever the panel uses, including `AppearanceMode.system`.
+    case matchLedge
+    case light
+    case dark
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .matchLedge: "Match Ledge"
+        case .light: "Light"
+        case .dark: "Dark"
+        }
+    }
+
+    /// `nil` inherits the panel's appearance.
+    var nsAppearance: NSAppearance? {
+        switch self {
+        case .matchLedge: nil
+        case .light: NSAppearance(named: .aqua)
+        case .dark: NSAppearance(named: .darkAqua)
+        }
+    }
+}
+
 /// Where favicons may be fetched from. The default keeps the app's
 /// "local-only" promise as far as practical by asking the site itself
 /// first and only falling back to a third-party service when that fails.
@@ -84,6 +112,34 @@ enum FaviconSource: String, CaseIterable, Identifiable, Sendable {
 
     var allowsSiteFetch: Bool { self != .monogramOnly }
     var allowsServiceFallback: Bool { self == .siteThenService }
+}
+
+/// Terminal text size, shared by every terminal: it is how readable the text
+/// is, not a property of one shell.
+enum TerminalFontSize {
+    static let standard: Double = 12
+    static let range: ClosedRange<Double> = 9...28
+
+    /// Whole points within `range`; anything else stored is a mistake.
+    static func clamped(_ size: Double) -> Double {
+        guard size.isFinite else { return standard }
+        return min(max(size.rounded(), range.lowerBound), range.upperBound)
+    }
+
+    static func zoomed(_ size: Double, _ change: TerminalZoom) -> Double {
+        switch change {
+        case .in: clamped(size + 1)
+        case .out: clamped(size - 1)
+        case .reset: standard
+        }
+    }
+}
+
+/// A terminal text-size change from the keyboard.
+enum TerminalZoom {
+    case `in`
+    case out
+    case reset
 }
 
 /// User-visible preferences that are *not* window geometry. Panel size,
@@ -119,6 +175,23 @@ final class Preferences: ObservableObject {
 
     @Published var appearance: AppearanceMode {
         didSet { store(appearance.rawValue, .appearance) }
+    }
+
+    /// Dark by default, independent of `appearance`.
+    @Published var terminalAppearance: TerminalAppearance {
+        didSet { store(terminalAppearance.rawValue, .terminalAppearance) }
+    }
+
+    /// In points; always within `TerminalFontSize.range`.
+    @Published var terminalFontSize: Double {
+        didSet {
+            let clamped = TerminalFontSize.clamped(terminalFontSize)
+            guard clamped == terminalFontSize else {
+                terminalFontSize = clamped
+                return
+            }
+            store(terminalFontSize, .terminalFontSize)
+        }
     }
 
     @Published var searchEngine: SearchEngine {
@@ -161,6 +234,8 @@ final class Preferences: ObservableObject {
         case followsMouseDisplay = "ledge.followsMouseDisplay"
         case animationSpeed = "ledge.animationSpeed"
         case appearance = "ledge.appearance"
+        case terminalAppearance = "ledge.terminalAppearance"
+        case terminalFontSize = "ledge.terminalFontSize"
         case searchEngine = "ledge.searchEngine"
         case faviconSource = "ledge.faviconSource"
         case edgeRevealTakesFocus = "ledge.edgeRevealTakesFocus"
@@ -181,6 +256,12 @@ final class Preferences: ObservableObject {
         appearance = AppearanceMode(
             rawValue: defaults.string(forKey: Key.appearance.rawValue) ?? ""
         ) ?? .system
+        terminalAppearance = TerminalAppearance(
+            rawValue: defaults.string(forKey: Key.terminalAppearance.rawValue) ?? ""
+        ) ?? .dark
+        terminalFontSize = TerminalFontSize.clamped(
+            defaults.object(forKey: Key.terminalFontSize.rawValue) as? Double ?? TerminalFontSize.standard
+        )
         searchEngine = SearchEngine(
             rawValue: defaults.string(forKey: Key.searchEngine.rawValue) ?? ""
         ) ?? .google

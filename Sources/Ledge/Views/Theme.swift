@@ -8,10 +8,11 @@ import SwiftUI
 /// to light or dark). Views should never hard-code raw greys.
 enum Theme {
     /// Main content background behind the home grid and browser chrome.
-    static let canvas = dynamic(
+    private static let canvasNS = dynamicNSColor(
         light: NSColor(calibratedWhite: 0.945, alpha: 1),
         dark: NSColor(calibratedRed: 0.106, green: 0.110, blue: 0.125, alpha: 1)
     )
+    static let canvas = Color(nsColor: canvasNS)
 
     /// The narrow dock rail beside the content.
     static let rail = dynamic(
@@ -56,9 +57,11 @@ enum Theme {
     )
     static let inkTertiary = Color(nsColor: inkTertiaryNS)
 
-    /// AppKit aliases for the Markdown text storage. Keep this surface
-    /// limited to colours AppKit actually consumes.
+    /// AppKit aliases for the Markdown text storage and the terminal. Keep
+    /// this surface limited to colours AppKit actually consumes.
     enum NS {
+        static let canvas = canvasNS
+        static let hairline = hairlineNS
         static let card = cardNS
         static let ink = inkNS
         static let inkSecondary = inkSecondaryNS
@@ -66,10 +69,11 @@ enum Theme {
     }
 
     /// Hairline separators and the panel's outer edge highlight.
-    static let hairline = dynamic(
+    private static let hairlineNS = dynamicNSColor(
         light: NSColor(calibratedWhite: 0, alpha: 0.10),
         dark: NSColor(calibratedWhite: 1, alpha: 0.12)
     )
+    static let hairline = Color(nsColor: hairlineNS)
 
     static let panelBorder = dynamic(
         light: NSColor(calibratedWhite: 1, alpha: 0.65),

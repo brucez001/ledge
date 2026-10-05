@@ -17,8 +17,17 @@ final class OpenSessionsStore {
         var iconHost: String?
     }
 
+    /// One terminal row, as it survives a quit: its splits and where each
+    /// shell was, never what one printed, ran, or called itself -- a shell's
+    /// title usually names whatever was running, which is stale by the next
+    /// launch.
+    struct OpenTerminal: Codable, Equatable {
+        var arrangement: TerminalArrangement
+    }
+
     private let sessionsKey = "ledge.openSessions"
     private let noteTabsKey = "ledge.openNoteTabs"
+    private let terminalsKey = "ledge.openTerminals"
     private let defaults: UserDefaults
 
     init(defaults: UserDefaults = .standard) {
@@ -47,6 +56,21 @@ final class OpenSessionsStore {
         defaults.set(ids.map(\.uuidString), forKey: noteTabsKey)
     }
 
+    // MARK: - Terminals
+
+    /// Rows that cannot be read are skipped one by one, so a single bad
+    /// record does not cost every terminal its row.
+    func loadTerminals() -> [OpenTerminal] {
+        guard let data = defaults.data(forKey: terminalsKey),
+              let rows = try? JSONDecoder().decode([Lenient<OpenTerminal>].self, from: data) else { return [] }
+        return rows.compactMap(\.value)
+    }
+
+    func saveTerminals(_ terminals: [OpenTerminal]) {
+        guard let data = try? JSONEncoder().encode(terminals) else { return }
+        defaults.set(data, forKey: terminalsKey)
+    }
+
     // MARK: - Reconciliation
 
     /// Drops rows that can no longer be opened, and demotes rows whose Home
@@ -70,5 +94,28 @@ final class OpenSessionsStore {
     /// launches must not come back as an empty tab.
     static func reconciledNoteTabs(_ ids: [UUID], against existing: Set<UUID>) -> [UUID] {
         ids.filter(existing.contains)
+    }
+
+    /// Forgets directories that have gone since the last launch, so a restored
+    /// pane neither shows nor starts in a place that is not there. The pane
+    /// itself stays: its shell starts in the home folder instead.
+    static func reconciledTerminals(
+        _ terminals: [OpenTerminal],
+        isDirectory: (URL) -> Bool
+    ) -> [OpenTerminal] {
+        func existing(_ directory: URL?) -> URL? {
+            guard let directory, directory.isFileURL, isDirectory(directory) else { return nil }
+            return directory
+        }
+        return terminals.map { OpenTerminal(arrangement: $0.arrangement.mappingDirectories(existing)) }
+    }
+}
+
+/// Decodes to `nil` instead of failing, for skipping unreadable array items.
+private struct Lenient<Value: Decodable>: Decodable {
+    let value: Value?
+
+    init(from decoder: Decoder) throws {
+        value = try? Value(from: decoder)
     }
 }

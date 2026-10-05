@@ -3,13 +3,14 @@
 ## Project
 
 Ledge is a native, local-only macOS slide-over web panel. It is a Swift 6
-package targeting macOS 14 and uses AppKit, SwiftUI, WebKit, and system
-frameworks only.
+package targeting macOS 14 and uses AppKit, SwiftUI, WebKit, system
+frameworks, and SwiftTerm, which draws terminal tabs.
 
 Preserve the core product contract:
 
 - local-only: no server, account, analytics, telemetry, payment, or licence flow;
-- no third-party runtime dependencies without explicit approval;
+- no third-party runtime dependencies without explicit approval; SwiftTerm is
+  the one approved dependency;
 - the rail contains open sessions only; every rail item shares the same close,
   menu, reordering, and keyboard behaviour;
 - favourites are Home shortcuts only: adding or removing one must not create,
@@ -20,6 +21,9 @@ Preserve the core product contract:
   login never loads a page;
 - notes persist as local plain-text files, and open note tabs, like sessions,
   are restored as rail rows;
+- open terminal tabs keep their shell until the user closes them; a restored
+  terminal row starts no shell until the user selects it, and closing a
+  terminal that is running a command is confirmed first;
 - the app remains an accessory app with no Dock or app-switcher presence;
 - outside display edges may reveal the panel; interior multi-display seams may not;
 - `⌘W` closes the current session, but never removes its Home favourite or
@@ -41,6 +45,9 @@ Use `Scripts/build-local-app.sh --open` for behaviour that only works from an
 app bundle, including launch-at-login and camera/microphone permission prompts.
 The generated app lives at `build/Ledge.app`.
 
+SwiftTerm ships a Metal shader. With Xcode 26 or later, `swift build` needs the
+separately installed Metal compiler: `xcodebuild -downloadComponent MetalToolchain`.
+
 `Scripts/package-release.sh` produces a distributable `build/Ledge-<version>.dmg`:
 it signs with a Developer ID certificate, notarises, and staples. Run
 `Scripts/package-release.sh --help` for options. Without Apple credentials,
@@ -52,6 +59,7 @@ distributable. Pushing a `v*` tag runs the same script in GitHub Actions.
 - `Sources/Ledge/App.swift` — app lifecycle and global controllers
 - `Sources/Ledge/Windowing/` — panel, display-edge, hotkey, and menu-bar behaviour
 - `Sources/Ledge/Sessions/` — persistent web sessions, tabs, and address resolution
+- `Sources/Ledge/Terminals/` — terminal tabs, shell launch, and process inspection
 - `Sources/Ledge/Views/` — SwiftUI interface
 - `Sources/Ledge/Favicons/` — site icon discovery and caching
 - `Sources/Ledge/Models/` — saved-site model and persistence
@@ -97,6 +105,8 @@ distributable. Pushing a `v*` tag runs the same script in GitHub Actions.
 - Do not commit `.build/`, `build/`, `DerivedData/`, user data, cookies, caches,
   signing identities, or local configuration.
 - Do not commit generated app bundles.
+- Commit `Package.resolved`. When SwiftTerm changes version, update
+  `THIRD-PARTY-NOTICES.md` from its licence.
 - When `Assets/AppIcon.svg` changes, run `Scripts/generate-app-icon.sh` and
   commit the matching PNG and ICNS outputs.
 - Keep unrelated workspace changes intact.

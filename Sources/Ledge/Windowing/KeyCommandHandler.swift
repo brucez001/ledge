@@ -1,4 +1,5 @@
 import AppKit
+import SwiftTerm
 import WebKit
 
 /// Every Ledge keyboard shortcut, dispatched from a single local
@@ -13,28 +14,39 @@ import WebKit
 ///
 /// Mapped shortcuts (kept in sync with `SettingsView`'s Shortcuts tab):
 ///   ⌘1 … ⌘9   Select the Nth open item in the rail, counting from the top
-///   ⌘0        Reset zoom while browsing a site, else go home
+///   ⌘0        Reset zoom on a site or terminal, else go home
 ///   ⇧⌘H       Go home (always)
 ///   ⌘L        Focus the address field (browser) / search field (home)
 ///   ⌘R        Reload the current site (browser mode only)
 ///   ⌘F        Show/hide find-in-page (browser mode only; a no-op on home)
 ///   ⌘N        Open a new note as a tab in the panel
+///   ⌥⌘T       Open a new terminal as a tab in the panel
 ///   ⇧⌘P       Swap the open note between preview and raw Markdown
 ///   ⇧⌘L       Turn live Markdown rendering in the note editor on or off
 ///   ⌘[ / ⌘←   Back (browser mode only)
 ///   ⌘] / ⌘→   Forward (browser mode only)
-///   ⌘+ / ⌘=   Zoom in (browser mode only)
-///   ⌘-        Zoom out (browser mode only)
+///   ⌘+ / ⌘=   Zoom in on a site or terminal
+///   ⌘-        Zoom out on a site or terminal
+///   ⌘D        Split the focused terminal pane right (terminal only)
+///   ⇧⌘D       Split the focused terminal pane down (terminal only)
+///   ⌘] / ⌘[   Next / previous terminal pane (forward / back on a site)
+///   ⌥⌘arrow   Focus the terminal pane in that direction (terminal only)
 ///   ⇧⌘C       Copy the current URL (browser mode only)
 ///   ⇧⌘O       Open the current page in the default browser (browser mode only)
 ///   Esc       See the ladder in `handleEscape`: close the find bar if
 ///             open; else blur a focused text field (address/search box)
-///             rather than navigating away from it; else, only when the
-///             web view itself is focused, pass through untouched; else go
-///             home from browser mode; else hide the panel from home.
+///             rather than navigating away from it; else, only when a
+///             terminal or the web view itself is focused, pass through
+///             untouched; else go home from browser mode; else hide the
+///             panel from home.
 ///   ⌘T        Open a new, empty session
-///   ⌘W        Close the current session or note tab. A session's Home
-///             favourite stays; a note's file is never deleted.
+///   ⌘W        Close the current session, note tab, or terminal pane (the
+///             terminal itself with its last pane). A session's Home
+///             favourite stays; a note's file is never deleted; a pane
+///             running a command asks first.
+///
+/// While a terminal is shown, the site-only shortcuts from ⌘R down, and every
+/// key not listed here, reach it untouched; ⌘F and ⌘L do nothing there.
 @MainActor
 final class KeyCommandHandler {
     private let controller: PanelController
@@ -72,11 +84,16 @@ final class KeyCommandHandler {
         let flags = event.modifierFlags.intersection(.deviceIndependentFlagsMask)
         let chars = event.charactersIgnoringModifiers?.lowercased() ?? ""
 
-        // Every rail row is a session or note tab, so ⌘W and ⇧⌘W close it by
-        // the same rule. The event is swallowed on Home too, preventing
-        // AppKit from closing the panel or app.
+        // Every rail row is a session, note, or terminal tab, so ⌘W and ⇧⌘W
+        // close it by the same rule. The event is swallowed on Home too,
+        // preventing AppKit from closing the panel or app.
         if flags.contains(.command), chars == "w" {
             controller.performClose(controller.closeAction())
+            return nil
+        }
+
+        if flags.contains(.command), flags.contains(.option), chars == "t" {
+            controller.openNewTerminal()
             return nil
         }
 
@@ -110,12 +127,38 @@ final class KeyCommandHandler {
         if !shift, chars == "0" {
             if isBrowserMode {
                 controller.sessionManager.activeSession()?.resetZoom()
+            } else if controller.isShowingTerminal {
+                controller.zoomTerminals(.reset)
             } else if controller.showsStartPage {
                 controller.goHome()
             } else {
                 return nil
             }
             return nil
+        }
+
+        // Terminal-only keys, checked before the browser-only cut-off below.
+        if controller.isShowingTerminal {
+            if chars == "+" || chars == "=" {
+                controller.zoomTerminals(.in)
+                return nil
+            }
+            if chars == "-" {
+                controller.zoomTerminals(.out)
+                return nil
+            }
+            if chars == "d", !flags.contains(.option) {
+                controller.splitTerminal(shift ? .stacked : .sideBySide)
+                return nil
+            }
+            if !shift, chars == "]" || chars == "[" {
+                controller.focusTerminalPane(offset: chars == "]" ? 1 : -1)
+                return nil
+            }
+            if flags.contains(.option), let direction = Self.paneDirection(forKeyCode: event.keyCode) {
+                controller.focusTerminalPane(toward: direction)
+                return nil
+            }
         }
 
         if shift, chars == "h" {
@@ -179,22 +222,34 @@ final class KeyCommandHandler {
         return event
     }
 
+    private static func paneDirection(forKeyCode keyCode: UInt16) -> TerminalPaneDirection? {
+        switch keyCode {
+        case 123: .left
+        case 124: .right
+        case 125: .down
+        case 126: .up
+        default: nil
+        }
+    }
+
     /// The Escape ladder, checked in order:
     ///   1. Find bar open -> close it (our own SwiftUI chrome; always safe).
     ///   2. An active text editor has focus (the shared field editor, or an
     ///      `NSTextField`/`NSSearchField` subtree -- e.g. the browser
     ///      address field or the home search box) -> blur it and swallow
-    ///      the key. This has to be checked *before* rule 4 below, or Esc
+    ///      the key. This has to be checked *before* rule 5 below, or Esc
     ///      while editing the address field would navigate home before the
     ///      field's own `cancelOperation` (revert pending edits) ever runs;
     ///      and on the home screen it must leave the field rather than
     ///      dismissing the whole panel.
-    ///   3. Browser mode and a live `WKWebView` has focus -> pass the event
+    ///   3. A note -> swallow. A terminal -> pass through while it has
+    ///      focus, else swallow; the pane never navigates away on Esc.
+    ///   4. Browser mode and a live `WKWebView` has focus -> pass the event
     ///      through untouched. Pages legitimately need Esc themselves
     ///      (leaving JS fullscreen video, dismissing an in-page modal), so
     ///      this app must never swallow it there.
-    ///   4. Browser mode, anything else focused -> go home.
-    ///   5. Home -> hide the panel. (It used to collapse the panel to a bare
+    ///   5. Browser mode, anything else focused -> go home.
+    ///   6. Home -> hide the panel. (It used to collapse the panel to a bare
     ///      rail; that mode is gone, and sliding out of the way is what the
     ///      user actually wants from Esc on the home screen.)
     private func handleEscape(_ event: NSEvent) -> NSEvent? {
@@ -214,8 +269,14 @@ final class KeyCommandHandler {
             return nil
         }
 
+        // Programs in a terminal need Esc (vim, less, a shell's own line
+        // editing), so it is theirs whenever the terminal has focus.
+        if controller.isShowingTerminal {
+            return firstResponderIsInside(TerminalView.self) ? event : nil
+        }
+
         if controller.showsBrowserContent {
-            guard !firstResponderIsInsideWebView() else { return event }
+            guard !firstResponderIsInside(WKWebView.self) else { return event }
             controller.goHome()
             return nil
         }
@@ -224,11 +285,11 @@ final class KeyCommandHandler {
         return nil
     }
 
-    private func firstResponderIsInsideWebView() -> Bool {
+    private func firstResponderIsInside(_ type: NSView.Type) -> Bool {
         guard let responderView = NSApp.keyWindow?.firstResponder as? NSView else { return false }
         var view: NSView? = responderView
         while let current = view {
-            if current is WKWebView { return true }
+            if current.isKind(of: type) { return true }
             view = current.superview
         }
         return false

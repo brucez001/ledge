@@ -12,9 +12,9 @@ final class SiteDragPayloadTests: XCTestCase {
         XCTAssertNil(SiteDragPayload.decode(.homeFavourite, from: railFavourite))
         XCTAssertNil(SiteDragPayload.decode(.homeFavourite, from: railTab))
 
-        XCTAssertNil(SiteDragPayload.decodeItem(home))
-        XCTAssertEqual(SiteDragPayload.decodeItem(railFavourite), .site(id))
-        XCTAssertEqual(SiteDragPayload.decodeItem(railTab), .tab(id))
+        XCTAssertNil(SiteDragPayload.decodeEntry(home))
+        XCTAssertEqual(SiteDragPayload.decodeEntry(railFavourite), .favourite(id))
+        XCTAssertEqual(SiteDragPayload.decodeEntry(railTab), .tab(id))
     }
 
     /// The two home grids share plain text, so only the prefix keeps a note
@@ -45,6 +45,16 @@ final class SiteDragPayloadTests: XCTestCase {
 
     func testUnrelatedTextIsRejected() {
         XCTAssertNil(SiteDragPayload.decode(.homeFavourite, from: "not a Ledge payload"))
-        XCTAssertNil(SiteDragPayload.decodeItem("not a Ledge payload"))
+        XCTAssertNil(SiteDragPayload.decodeEntry("not a Ledge payload"))
+    }
+
+    /// Every rail row encodes to a payload the rail decodes back to it.
+    func testEveryRailEntryRoundTrips() {
+        let id = UUID()
+        let entries: [RailEntry] = [.favourite(id), .tab(id), .note(id), .terminal(id)]
+
+        for entry in entries {
+            XCTAssertEqual(SiteDragPayload.decodeEntry(SiteDragPayload.encode(entry)), entry)
+        }
     }
 }

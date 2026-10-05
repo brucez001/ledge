@@ -31,6 +31,11 @@ jobs:
       - name: Show Swift toolchain
         run: swift --version
 
+      - name: Install the Metal toolchain
+        # SwiftTerm ships a Metal shader, and Xcode 26 and later install the
+        # compiler for it as a separate component.
+        run: xcrun metal -v >/dev/null 2>&1 || xcodebuild -downloadComponent MetalToolchain
+
       - name: Run tests
         run: swift test
 

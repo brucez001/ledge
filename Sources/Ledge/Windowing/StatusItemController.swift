@@ -96,6 +96,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         menu.addItem(.separator())
         menu.addItem(makeSitesItem())
         menu.addItem(makeNotesItem())
+
+        let terminalItem = makeItem("New Terminal", #selector(openNewTerminal), key: "t")
+        terminalItem.keyEquivalentModifierMask = [.command, .option]
+        menu.addItem(terminalItem)
         menu.addItem(.separator())
 
         let settingsItem = makeItem("Settings…", #selector(openSettings), key: ",")
@@ -221,6 +225,16 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             guard let self else { return }
             self.panelController.show()
             self.panelController.openNewNote()
+        }
+    }
+
+    @objc private func openNewTerminal() {
+        // Like a note, a terminal is a tab in the panel, so the panel has to
+        // be revealed for anything to visibly happen.
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.panelController.show()
+            self.panelController.openNewTerminal()
         }
     }
 

@@ -32,6 +32,65 @@ final class PreferencesTests: XCTestCase {
         XCTAssertTrue(Preferences(defaults: suite).notesRenderMarkdown)
     }
 
+    /// Terminals are dark unless the user says otherwise, whatever the panel
+    /// itself uses.
+    func testTerminalsAreDarkByDefaultWhateverThePanelUses() {
+        let suite = makeSuite()
+        suite.set("light", forKey: "ledge.appearance")
+
+        let preferences = Preferences(defaults: suite)
+        XCTAssertEqual(preferences.appearance, .light)
+        XCTAssertEqual(preferences.terminalAppearance, .dark)
+    }
+
+    func testTerminalAppearanceRoundTripsAndSurvivesRubbish() {
+        let suite = makeSuite()
+        Preferences(defaults: suite).terminalAppearance = .matchLedge
+        XCTAssertEqual(Preferences(defaults: suite).terminalAppearance, .matchLedge)
+
+        suite.set("nonsense", forKey: "ledge.terminalAppearance")
+        XCTAssertEqual(Preferences(defaults: suite).terminalAppearance, .dark)
+
+        suite.set(7, forKey: "ledge.terminalAppearance")
+        XCTAssertEqual(Preferences(defaults: suite).terminalAppearance, .dark)
+    }
+
+    /// "Match Ledge" must inherit rather than pin, or it would stop following
+    /// the panel's own setting.
+    func testMatchLedgeInheritsThePanelsAppearance() {
+        XCTAssertNil(TerminalAppearance.matchLedge.nsAppearance)
+        XCTAssertEqual(TerminalAppearance.dark.nsAppearance?.name, .darkAqua)
+        XCTAssertEqual(TerminalAppearance.light.nsAppearance?.name, .aqua)
+    }
+
+    func testTerminalTextSizeDefaultsAndStaysInRange() {
+        let suite = makeSuite()
+        XCTAssertEqual(Preferences(defaults: suite).terminalFontSize, TerminalFontSize.standard)
+
+        let preferences = Preferences(defaults: suite)
+        preferences.terminalFontSize = 15
+        XCTAssertEqual(Preferences(defaults: suite).terminalFontSize, 15)
+
+        preferences.terminalFontSize = 400
+        XCTAssertEqual(preferences.terminalFontSize, TerminalFontSize.range.upperBound)
+        XCTAssertEqual(Preferences(defaults: suite).terminalFontSize, TerminalFontSize.range.upperBound)
+
+        suite.set(2.0, forKey: "ledge.terminalFontSize")
+        XCTAssertEqual(Preferences(defaults: suite).terminalFontSize, TerminalFontSize.range.lowerBound)
+        suite.set("nonsense", forKey: "ledge.terminalFontSize")
+        XCTAssertEqual(Preferences(defaults: suite).terminalFontSize, TerminalFontSize.standard)
+    }
+
+    func testTerminalZoomStepsStopAtTheEnds() {
+        let range = TerminalFontSize.range
+        XCTAssertEqual(TerminalFontSize.zoomed(12, .in), 13)
+        XCTAssertEqual(TerminalFontSize.zoomed(12, .out), 11)
+        XCTAssertEqual(TerminalFontSize.zoomed(19, .reset), TerminalFontSize.standard)
+        XCTAssertEqual(TerminalFontSize.zoomed(range.upperBound, .in), range.upperBound)
+        XCTAssertEqual(TerminalFontSize.zoomed(range.lowerBound, .out), range.lowerBound)
+        XCTAssertEqual(TerminalFontSize.clamped(.infinity), TerminalFontSize.standard)
+    }
+
     func testChangesRoundTripThroughDefaults() {
         let suite = makeSuite()
 

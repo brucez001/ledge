@@ -11,6 +11,19 @@ enum LauncherDestination: Hashable {
     case tab(UUID)
     /// An open note tab. It shows the plain-text editor, never a web view.
     case note(UUID)
+    /// An open terminal tab. It shows the terminal, never a web view.
+    case terminal(UUID)
+}
+
+/// A terminal close waiting on the user, because it would end a command
+/// that is still running.
+struct TerminalCloseRequest: Identifiable, Equatable {
+    let tabID: UUID
+    /// The one pane to close, or `nil` for the whole terminal.
+    let paneID: UUID?
+    let commands: [String]
+
+    var id: UUID { paneID ?? tabID }
 }
 
 /// Which screen edge the panel is currently pinned to.
@@ -85,10 +98,14 @@ final class PanelController: NSObject, ObservableObject {
     /// view layer re-renders on the change: the shell observes the controller
     /// and the session *manager*, not every individual session.
     @Published private(set) var blankTabIDs: Set<UUID> = []
+    /// Set while the user is asked whether to end a running command by
+    /// closing its terminal.
+    @Published var pendingTerminalClose: TerminalCloseRequest?
 
     let sessionManager = SessionManager()
     let favourites = FavouritesStore()
     let noteController = NoteController()
+    let terminalController = TerminalController()
     private let openSessions = OpenSessionsStore()
     let preferences = Preferences.shared
 
@@ -183,6 +200,13 @@ final class PanelController: NSObject, ObservableObject {
             height: max(400, CGFloat(defaults.object(forKey: "ledge.panelHeight") as? Double ?? Self.expandedHeight))
         )
         super.init()
+        // A shell that exits cleanly (`exit`, ⌃D) closes its pane -- and the
+        // terminal, if it was the last -- as in Terminal; one that fails stays
+        // open so the user can see why.
+        terminalController.onShellExit = { [weak self] tab, shell in
+            guard case .exited(status: 0) = shell.state else { return }
+            self?.closeTerminalPane(shell.id, in: tab.id)
+        }
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(screenParametersChanged),
@@ -496,6 +520,12 @@ final class PanelController: NSObject, ObservableObject {
                 self?.bumpHomeFocus()
             }
         }
+        if activating, let id = activeTerminalID {
+            DispatchQueue.main.async { [weak self] in
+                guard let self, self.activeTerminalID == id, let tab = self.terminalController.tab(for: id) else { return }
+                self.terminalController.present(tab)
+            }
+        }
     }
 
     /// Bumps the animation generation and updates the phase immediately, so
@@ -715,9 +745,19 @@ final class PanelController: NSObject, ObservableObject {
         activeNoteID != nil
     }
 
+    /// The terminal tab currently shown in the main pane, if any.
+    var activeTerminalID: UUID? {
+        guard case .terminal(let id) = destination else { return nil }
+        return id
+    }
+
+    var isShowingTerminal: Bool {
+        activeTerminalID != nil
+    }
+
     /// Whether the main pane should show the web surface (`BrowserPanel`).
     var showsBrowserContent: Bool {
-        !showsStartPage && activeNoteID == nil
+        !showsStartPage && activeNoteID == nil && activeTerminalID == nil
     }
 
     /// Whether the main pane should show the start page rather than a web
@@ -731,7 +771,7 @@ final class PanelController: NSObject, ObservableObject {
             false
         case .tab(let id):
             blankTabIDs.contains(id)
-        case .note:
+        case .note, .terminal:
             false
         }
     }
@@ -837,7 +877,7 @@ final class PanelController: NSObject, ObservableObject {
     /// Focuses whatever text field is relevant to the current destination:
     /// the browser address field, or the home search field.
     func focusAddressField() {
-        guard !isShowingNote else { return }
+        guard !isShowingNote, !isShowingTerminal else { return }
         if showsStartPage {
             bumpHomeFocus()
         } else {
@@ -882,7 +922,7 @@ final class PanelController: NSObject, ObservableObject {
         case .home: nil
         case .favourite(let id): .favourite(id)
         case .tab(let id): .tab(id)
-        case .note: nil
+        case .note, .terminal: nil
         }
         let wasActive = sessionManager.activeSessionID == kind || destinationKind == kind
         let successor = RailSelection.successor(after: kind, in: sessionManager.sessionOrder)
@@ -913,6 +953,8 @@ final class PanelController: NSObject, ObservableObject {
             closeSession(kind)
         case .closeNote(let id):
             closeNote(id)
+        case .closeTerminal(let id):
+            requestCloseFocusedTerminalPane(id)
         case .nothing:
             break
         }
@@ -1034,6 +1076,162 @@ final class PanelController: NSObject, ObservableObject {
         }
     }
 
+    // MARK: - Terminals
+
+    /// Opens a new terminal tab (⌥⌘T / "New Terminal") and starts its shell,
+    /// in `directory` when given and otherwise in the home folder.
+    func openNewTerminal(in directory: URL? = nil) {
+        let tab = terminalController.openNew(in: directory)
+        selectTerminalTab(tab.id)
+    }
+
+    /// The rail's Duplicate: a new one-pane terminal in the focused pane's
+    /// directory. Nothing that is running in the original is copied.
+    func duplicateTerminal(_ id: UUID) {
+        guard let tab = terminalController.tab(for: id) else { return }
+        tab.focusedShell.refreshStatus()
+        openNewTerminal(in: tab.directory)
+    }
+
+    /// Selects an open terminal tab, starting any pane that has never had a
+    /// shell. A pane whose shell failed keeps showing why until the user
+    /// restarts or closes it.
+    func openTerminalTab(_ id: UUID) {
+        guard terminalController.tab(for: id) != nil else { return }
+        selectTerminalTab(id)
+    }
+
+    /// Starts a fresh shell in a pane whose shell has ended.
+    func restartTerminalPane(_ shellID: UUID, in tabID: UUID) {
+        guard let tab = terminalController.tab(for: tabID),
+              let shell = tab.shell(for: shellID), !shell.isRunning else { return }
+        shell.start(fontSize: preferences.terminalFontSize)
+        tab.focus(shellID)
+        selectTerminalTab(tabID)
+    }
+
+    private func selectTerminalTab(_ id: UUID) {
+        guard let tab = terminalController.tab(for: id) else { return }
+        sessionManager.setActiveSession(nil)
+        destination = .terminal(id)
+        isShowingFindBar = false
+        tab.startDormantShells(fontSize: preferences.terminalFontSize)
+        terminalController.present(tab)
+    }
+
+    /// ⌘D / ⇧⌘D, and the terminal menus' Split Right and Split Down: a new
+    /// shell beside or below the focused pane, in its directory.
+    func splitTerminal(_ orientation: TerminalSplitOrientation, tabID: UUID? = nil) {
+        guard let id = tabID ?? activeTerminalID, let tab = terminalController.tab(for: id) else { return }
+        if activeTerminalID != id {
+            selectTerminalTab(id)
+        }
+        // Panes too narrow or short to type in are no use to anyone.
+        if let view = tab.focusedShell.view, !view.canSplit(orientation) {
+            NSSound.beep()
+            return
+        }
+        tab.split(orientation, fontSize: preferences.terminalFontSize)
+        terminalController.present(tab)
+    }
+
+    /// ⌥⌘ and an arrow: focus the pane beside the focused one.
+    func focusTerminalPane(toward direction: TerminalPaneDirection) {
+        guard let id = activeTerminalID, let tab = terminalController.tab(for: id),
+              tab.focusPane(toward: direction) else { return }
+        terminalController.present(tab)
+    }
+
+    /// ⌘] / ⌘[: focus the next or previous pane, wrapping round.
+    func focusTerminalPane(offset: Int) {
+        guard let id = activeTerminalID, let tab = terminalController.tab(for: id), tab.isSplit else { return }
+        tab.focusPane(offset: offset)
+        terminalController.present(tab)
+    }
+
+    /// ⌘+ / ⌘- / ⌘0 while a terminal is shown. One size for every terminal,
+    /// remembered across launches.
+    func zoomTerminals(_ change: TerminalZoom) {
+        guard isShowingTerminal else { return }
+        // Busy panes keep their size until their command ends, so each needs
+        // to be known as busy before the size changes.
+        for tab in terminalController.tabs {
+            for shell in tab.orderedShells {
+                shell.refreshStatus()
+            }
+        }
+        preferences.terminalFontSize = TerminalFontSize.zoomed(preferences.terminalFontSize, change)
+    }
+
+    /// The rail's ✕, its menu, and Home's menu: closes the whole terminal,
+    /// every pane included. Asks first while any pane is running a command.
+    func requestCloseTerminal(_ id: UUID) {
+        guard let tab = terminalController.tab(for: id) else { return }
+        confirmOrClose(TerminalCloseRequest(tabID: id, paneID: nil, commands: tab.runningCommands))
+    }
+
+    /// ⌘W: closes the focused pane, or the terminal when it is the last one.
+    /// Asks first while that pane is running a command.
+    func requestCloseFocusedTerminalPane(_ id: UUID) {
+        guard let tab = terminalController.tab(for: id) else { return }
+        guard tab.isSplit else {
+            requestCloseTerminal(id)
+            return
+        }
+        let shell = tab.focusedShell
+        confirmOrClose(TerminalCloseRequest(tabID: id, paneID: shell.id, commands: [shell.currentCommand()].compactMap { $0 }))
+    }
+
+    private func confirmOrClose(_ request: TerminalCloseRequest) {
+        if request.commands.isEmpty {
+            performTerminalClose(request)
+        } else {
+            pendingTerminalClose = request
+        }
+    }
+
+    /// Carries out a close the user has confirmed, or that needed no asking.
+    func performTerminalClose(_ request: TerminalCloseRequest) {
+        if let paneID = request.paneID {
+            closeTerminalPane(paneID, in: request.tabID)
+        } else {
+            closeTerminal(request.tabID)
+        }
+    }
+
+    /// Ends one pane's shell; the last pane takes the terminal with it.
+    func closeTerminalPane(_ shellID: UUID, in tabID: UUID) {
+        guard let tab = terminalController.tab(for: tabID), tab.shell(for: shellID) != nil else { return }
+        if pendingTerminalClose?.tabID == tabID, pendingTerminalClose?.paneID == shellID {
+            pendingTerminalClose = nil
+        }
+        guard tab.closePane(shellID) else {
+            closeTerminal(tabID)
+            return
+        }
+        if activeTerminalID == tabID {
+            terminalController.present(tab)
+        }
+    }
+
+    /// Closes a terminal tab and ends every shell in it without asking.
+    /// Callers must already have confirmed it if a command was running.
+    func closeTerminal(_ id: UUID) {
+        guard terminalController.tab(for: id) != nil else { return }
+        if pendingTerminalClose?.tabID == id {
+            pendingTerminalClose = nil
+        }
+        let wasActive = activeTerminalID == id
+        let successor = RailSelection.successor(after: .terminal(id), in: railEntries)
+        terminalController.close(id)
+        guard wasActive else { return }
+        if let successor {
+            selectEntry(successor)
+        } else {
+            goHome()
+        }
+    }
+
     /// Promotes the page in the transient "browse" session into a permanent
     /// favourite, the way a browser's bookmark button works.
     ///
@@ -1094,10 +1292,11 @@ final class PanelController: NSObject, ObservableObject {
 
     // MARK: - Rail order
 
-    /// Open web sessions first, followed by open note tabs.
+    /// Open web sessions first, then open note tabs, then terminal tabs.
     var railEntries: [RailEntry] {
         sessionManager.sessionOrder.map(RailEntry.init)
             + noteController.tabs.map { .note($0.id) }
+            + terminalController.tabs.map { .terminal($0.id) }
     }
 
     /// Selects the rail row a ⌘1…⌘9 shortcut names, counting from the top of
@@ -1109,11 +1308,13 @@ final class PanelController: NSObject, ObservableObject {
         selectEntry(entry)
     }
 
-    /// Selects whatever rail row was clicked or named, session or note.
+    /// Selects whatever rail row was clicked or named.
     func selectEntry(_ entry: RailEntry) {
         switch entry {
         case .note(let id):
             openNoteTab(id)
+        case .terminal(let id):
+            openTerminalTab(id)
         case .favourite, .tab:
             guard let kind = entry.sessionKind else { return }
             openSession(kind)
@@ -1154,17 +1355,37 @@ final class PanelController: NSObject, ObservableObject {
         noteController.restore(
             OpenSessionsStore.reconciledNoteTabs(openSessions.loadNoteTabs(), against: existingNotes)
         )
+        terminalController.restore(
+            OpenSessionsStore.reconciledTerminals(openSessions.loadTerminals()) { url in
+                var isDirectory: ObjCBool = false
+                return FileManager.default.fileExists(atPath: url.path, isDirectory: &isDirectory)
+                    && isDirectory.boolValue
+            }
+        )
 
-        // Opening, closing and reordering are the structural changes worth
-        // surviving a force quit; `applicationWillTerminate` catches the
-        // pages a session navigated to in between.
+        // Opening, closing, reordering, and splitting are the structural
+        // changes worth surviving a force quit; `applicationWillTerminate`
+        // catches the pages a session navigated to, and the directory a shell
+        // moved to, in between. `@Published` emits before the new value is stored, so
+        // each save waits a turn of the run loop to read the changed rail.
         sessionManager.$sessions
             .dropFirst()
+            .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.saveRail() }
             .store(in: &cancellables)
         noteController.$tabs
             .dropFirst()
+            .receive(on: RunLoop.main)
             .sink { [weak self] _ in self?.saveRail() }
+            .store(in: &cancellables)
+        terminalController.$tabs
+            .dropFirst()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.saveRail() }
+            .store(in: &cancellables)
+        terminalController.arrangementChanged
+            .debounce(for: .milliseconds(500), scheduler: RunLoop.main)
+            .sink { [weak self] in self?.saveRail() }
             .store(in: &cancellables)
     }
 
@@ -1172,17 +1393,18 @@ final class PanelController: NSObject, ObservableObject {
     func saveRail() {
         openSessions.saveSessions(sessionManager.restorableSessions)
         openSessions.saveNoteTabs(noteController.restorableNoteIDs)
+        openSessions.saveTerminals(terminalController.restorableTerminals)
     }
 
     func railGroup(containing entry: RailEntry) -> [RailEntry] {
-        let isNote = entry.noteID != nil
-        return railEntries.filter { ($0.noteID != nil) == isNote }
+        railEntries.filter { $0.group == entry.group }
     }
 
     /// Reordering the rail never changes Home favourite order.
     private func applyRailOrder(_ entries: [RailEntry]) {
         sessionManager.setSessionOrder(entries.compactMap(\.sessionKind))
         noteController.setNoteOrder(entries.compactMap(\.noteID))
+        terminalController.setOrder(entries.compactMap(\.terminalID))
     }
 
     // MARK: - Geometry

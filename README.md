@@ -8,14 +8,16 @@
 <h1 align="center">Ledge</h1>
 
 <p align="center">
-  A native, local-only slide-over web panel and notepad for macOS.
+  A native, local-only slide-over web panel, notepad, and terminal for macOS.
 </p>
 
-Ledge keeps the sites you use most and your plain-text notes one hover or hotkey
-away. Open sites keep their WebKit sessions while you switch sites or hide the
-panel.
+Ledge keeps the sites you use most, your plain-text notes, and your shell one
+hover or hotkey away. Open sites keep their WebKit sessions, and open terminals
+keep their shells, while you switch tabs or hide the panel.
 
-No server. No account. No telemetry. No third-party runtime dependencies.
+No server. No account. No telemetry. One open-source runtime dependency:
+[SwiftTerm](https://github.com/migueldeicaza/SwiftTerm), which draws the
+terminals.
 
 > [!NOTE]
 > Ledge is not yet signed with an Apple Developer ID, so downloads are unsigned
@@ -56,17 +58,28 @@ I obtain one. Building from source following the steps below also avoids them.
 - Take quick Markdown notes with **⌘N** — they open as tabs beside your
   sessions, styled as you type, with a rendered preview on **⇧⌘P**.
 - Notes are saved on your Mac as plain Markdown files and never leave it.
+- Open a terminal from Home or with **⌥⌘T** — your login shell in a tab that
+  keeps running while the panel is hidden. Closing one that is still running a
+  command asks first, and a restored terminal starts its shell only once you
+  select it. Terminals are dark by default, even in a light panel; choose
+  Light or Match Ledge in Settings.
+- Split a terminal right with **⌘D** or down with **⇧⌘D**, move between panes
+  with **⌘[** / **⌘]** or **⌥⌘** and an arrow, and drag a divider to resize.
+  **⌘W** closes the focused pane. Splits come back after a restart.
+- Make terminal text larger or smaller with **⌘+** / **⌘−**, and reset it
+  with **⌘0**.
 - Use keyboard shortcuts for quick access and navigation.
 
 ## Requirements
 
 - macOS 14 Sonoma or later
-- Swift 6 and the Xcode command-line tools
+- Xcode 16 or later
 
-Install the command-line tools if needed:
+Xcode 26 and later install the Metal compiler separately, and SwiftTerm needs it
+to build. Install it once if needed:
 
 ```zsh
-xcode-select --install
+xcodebuild -downloadComponent MetalToolchain
 ```
 
 ## Build and run
@@ -106,6 +119,11 @@ Website data is stored by macOS WebKit. Favourites and preferences stay in
 Notes are saved as plain-text files under Application Support and never leave
 your Mac.
 
+Terminals run your own login shell on your Mac, with your permissions. Ledge
+keeps no record of what you type or what a terminal prints; to rebuild the
+sidebar it remembers only how each open terminal is split and each pane's
+working directory.
+
 Ledge is intentionally a focused edge browser, not a cloud-synced workspace or
 notification platform.
 
@@ -126,3 +144,7 @@ See [`AGENTS.md`](AGENTS.md) for project conventions and behavioural contracts.
 
 Ledge's source code and original assets are available under the
 [MIT Licence](LICENSE). Copyright © 2026 Bruce Zhu.
+
+SwiftTerm is available under the MIT Licence; see
+[`THIRD-PARTY-NOTICES.md`](THIRD-PARTY-NOTICES.md), which is also included in
+the app.

@@ -71,6 +71,22 @@ struct RailReordering {
     func moveDown() { controller.moveRailEntry(entry, by: 1) }
 }
 
+/// Move Up and Move Down for a rail row's menu, shown only when it can move.
+struct RailMoveItems: View {
+    let reordering: RailReordering
+
+    var body: some View {
+        if reordering.isAvailable {
+            Divider()
+
+            Button("Move Up") { reordering.moveUp() }
+                .disabled(!reordering.canMoveUp)
+            Button("Move Down") { reordering.moveDown() }
+                .disabled(!reordering.canMoveDown)
+        }
+    }
+}
+
 /// Home favourites are shortcuts only, so their menu only manages the
 /// shortcut itself. Session controls live on the rail and browser surface.
 struct FavouriteMenuItems: View {
@@ -137,14 +153,7 @@ struct RailSessionMenuItems: View {
         Button("Open in default browser") { session.openInDefaultBrowser() }
             .disabled(session.currentURL == nil)
 
-        if reordering.isAvailable {
-            Divider()
-
-            Button("Move Up") { reordering.moveUp() }
-                .disabled(!reordering.canMoveUp)
-            Button("Move Down") { reordering.moveDown() }
-                .disabled(!reordering.canMoveDown)
-        }
+        RailMoveItems(reordering: reordering)
 
         Divider()
 

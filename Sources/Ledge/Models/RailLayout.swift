@@ -1,15 +1,23 @@
 import Foundation
 
-/// One open rail row: a live session or an open note tab.
+/// One open rail row: a live session, an open note tab, or a terminal tab.
 ///
 /// The session cases preserve whether a live session is associated with a
 /// Home favourite, but that association does not change its rail behaviour.
-/// Note tabs share the same close, menu, reordering, and keyboard rules as
-/// sessions; only their content is plain text rather than a web view.
+/// Note and terminal tabs share the same close, menu, reordering, and
+/// keyboard rules as sessions; only their content differs.
 enum RailEntry: Hashable, Identifiable {
     case favourite(UUID)
     case tab(UUID)
     case note(UUID)
+    case terminal(UUID)
+
+    /// The rail's sections. Rows reorder within their own section only.
+    enum Group: CaseIterable {
+        case sessions
+        case notes
+        case terminals
+    }
 
     init(_ kind: SessionKind) {
         switch kind {
@@ -20,12 +28,20 @@ enum RailEntry: Hashable, Identifiable {
 
     var id: Self { self }
 
-    /// The session behind this entry, or `nil` for a note tab.
+    var group: Group {
+        switch self {
+        case .favourite, .tab: .sessions
+        case .note: .notes
+        case .terminal: .terminals
+        }
+    }
+
+    /// The session behind this entry, or `nil` for a note or terminal tab.
     var sessionKind: SessionKind? {
         switch self {
         case .favourite(let id): .favourite(id)
         case .tab(let id): .tab(id)
-        case .note: nil
+        case .note, .terminal: nil
         }
     }
 
@@ -36,6 +52,11 @@ enum RailEntry: Hashable, Identifiable {
 
     var noteID: UUID? {
         guard case .note(let id) = self else { return nil }
+        return id
+    }
+
+    var terminalID: UUID? {
+        guard case .terminal(let id) = self else { return nil }
         return id
     }
 }

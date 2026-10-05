@@ -6,6 +6,7 @@ struct LauncherHome: View {
     @ObservedObject var preferences: Preferences
     @ObservedObject private var noteController: NoteController
     @ObservedObject private var noteStore: NoteStore
+    @ObservedObject private var terminalController: TerminalController
 
     @State private var searchText = ""
     @FocusState private var searchFocused: Bool
@@ -18,7 +19,11 @@ struct LauncherHome: View {
         let notes = controller.noteController
         self.noteController = notes
         self.noteStore = notes.store
+        self.terminalController = controller.terminalController
     }
+
+    /// Space between the bottom of one Home section and the next heading.
+    private let sectionSpacing: CGFloat = 32
 
     private let columns = [
         GridItem(.adaptive(minimum: Theme.Metrics.tileSize, maximum: Theme.Metrics.tileSize), spacing: Theme.Metrics.tileGap, alignment: .leading)
@@ -90,12 +95,14 @@ struct LauncherHome: View {
                         )
                     }
                     .padding(.top, 24)
-                    .padding(.bottom, 40)
                 }
 
                 notesSection
+
+                terminalsSection
             }
             .padding(.horizontal, 36)
+            .padding(.bottom, 40)
         }
         .scrollIndicators(.hidden)
         .contentShape(Rectangle())
@@ -255,43 +262,17 @@ struct LauncherHome: View {
     @ViewBuilder
     private var notesSection: some View {
         if noteStore.notes.isEmpty {
-            Button(action: controller.openNewNote) {
-                HStack(spacing: 8) {
-                    Image(systemName: "note.text.badge.plus")
-                        .font(.system(size: 14, weight: .medium))
-                    Text("New note")
-                        .font(.system(size: 13, weight: .medium, design: .rounded))
-                    Spacer()
-                    Text("⌘N")
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
-                        .foregroundStyle(Theme.inkTertiary)
-                }
-                .padding(.horizontal, 16)
-                .frame(height: 38)
-                .background(
-                    Theme.card,
-                    in: RoundedRectangle(cornerRadius: Theme.Metrics.controlCornerRadius, style: .continuous)
-                )
-                .overlay {
-                    RoundedRectangle(cornerRadius: Theme.Metrics.controlCornerRadius, style: .continuous)
-                        .stroke(Theme.hairline, lineWidth: 1)
-                }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .help("New note (⌘N)")
-            .accessibilityLabel("Create a new note")
-            .padding(.top, 32)
+            HomeCreateButton(
+                systemName: "note.text.badge.plus",
+                title: "New note",
+                shortcut: "⌘N",
+                accessibilityLabel: "Create a new note",
+                action: controller.openNewNote
+            )
+            .padding(.top, sectionSpacing)
         } else {
-            HStack {
-                Text("Notes")
-                    .font(.system(size: 20, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Theme.ink)
-                Text("\(noteStore.notes.count)")
-                    .font(.system(size: 13, weight: .medium, design: .rounded))
-                    .foregroundStyle(Theme.inkTertiary)
-            }
-            .padding(.top, 44)
+            HomeSectionTitle(title: "Notes", count: noteStore.notes.count)
+                .padding(.top, sectionSpacing)
 
             LazyVGrid(columns: columns, alignment: .leading, spacing: 16) {
                 ForEach(noteStore.notes) { note in
@@ -310,7 +291,37 @@ struct LauncherHome: View {
                 )
             }
             .padding(.top, 24)
-            .padding(.bottom, 40)
+        }
+    }
+
+    /// The Home entry point for terminals, built like the notes section: a
+    /// slim "New terminal" button while none is open, then a grid of the open
+    /// terminals plus the same add tile. The grid follows the sidebar's order,
+    /// which is where terminals are arranged.
+    @ViewBuilder
+    private var terminalsSection: some View {
+        if terminalController.tabs.isEmpty {
+            HomeCreateButton(
+                systemName: "apple.terminal",
+                title: "New terminal",
+                shortcut: "⌥⌘T",
+                accessibilityLabel: "Open a new terminal",
+                action: { controller.openNewTerminal() }
+            )
+            // Directly under the slim "New note" button the two read as one
+            // group.
+            .padding(.top, noteStore.notes.isEmpty ? 12 : sectionSpacing)
+        } else {
+            HomeSectionTitle(title: "Terminals", count: terminalController.tabs.count)
+                .padding(.top, sectionSpacing)
+
+            LazyVGrid(columns: columns, alignment: .leading, spacing: 16) {
+                ForEach(terminalController.tabs) { tab in
+                    TerminalTile(controller: controller, tab: tab)
+                }
+                NewTerminalTile(action: { controller.openNewTerminal() })
+            }
+            .padding(.top, 24)
         }
     }
 
@@ -336,6 +347,63 @@ struct LauncherHome: View {
             .buttonStyle(.borderedProminent)
         }
         .frame(maxWidth: .infinity)
+    }
+}
+
+/// A Home section heading with its item count, as the notes and terminals
+/// grids use.
+private struct HomeSectionTitle: View {
+    let title: String
+    let count: Int
+
+    var body: some View {
+        HStack {
+            Text(title)
+                .font(.system(size: 20, weight: .semibold, design: .rounded))
+                .foregroundStyle(Theme.ink)
+            Text("\(count)")
+                .font(.system(size: 13, weight: .medium, design: .rounded))
+                .foregroundStyle(Theme.inkTertiary)
+        }
+    }
+}
+
+/// The slim, full-width "create" button a Home section shows while it has
+/// nothing in it yet.
+private struct HomeCreateButton: View {
+    let systemName: String
+    let title: String
+    let shortcut: String
+    let accessibilityLabel: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: systemName)
+                    .font(.system(size: 14, weight: .medium))
+                Text(title)
+                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                Spacer()
+                Text(shortcut)
+                    .font(.system(size: 12, weight: .medium, design: .rounded))
+                    .foregroundStyle(Theme.inkTertiary)
+            }
+            .padding(.horizontal, 16)
+            .frame(height: 38)
+            .background(
+                Theme.card,
+                in: RoundedRectangle(cornerRadius: Theme.Metrics.controlCornerRadius, style: .continuous)
+            )
+            .overlay {
+                RoundedRectangle(cornerRadius: Theme.Metrics.controlCornerRadius, style: .continuous)
+                    .stroke(Theme.hairline, lineWidth: 1)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help("\(title) (\(shortcut))")
+        .accessibilityLabel(accessibilityLabel)
     }
 }
 

@@ -97,6 +97,10 @@ mkdir -p "${MACOS_DIR}" "${RESOURCES_DIR}"
 cp "${BUILT_BINARY}" "${MACOS_DIR}/${EXECUTABLE_NAME}"
 chmod +x "${MACOS_DIR}/${EXECUTABLE_NAME}"
 
+# The MIT licence of the bundled SwiftTerm requires its notice to travel with
+# the app.
+cp "${REPO_ROOT}/THIRD-PARTY-NOTICES.md" "${RESOURCES_DIR}/THIRD-PARTY-NOTICES.md"
+
 if [[ ! -f "${ICON_SOURCE}" ]]; then
   echo "error: missing ${ICON_SOURCE}; run Scripts/generate-app-icon.sh" >&2
   exit 1

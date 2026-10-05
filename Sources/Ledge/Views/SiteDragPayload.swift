@@ -25,16 +25,7 @@ enum SiteDragPayload {
         case railFavourite = "ledge.rail-favourite:"
         case railTab = "ledge.rail-tab:"
         case railNote = "ledge.rail-note:"
-    }
-
-    /// What is being dragged around the rail.
-    enum Item: Equatable {
-        /// A session associated with a Home favourite.
-        case site(UUID)
-        /// An ordinary session with no Home favourite.
-        case tab(UUID)
-        /// An open note tab.
-        case note(UUID)
+        case railTerminal = "ledge.rail-terminal:"
     }
 
     static func encode(_ kind: Kind, _ id: UUID) -> String {
@@ -50,10 +41,21 @@ enum SiteDragPayload {
 
     /// Rail-only decode, so a Home shortcut cannot be dragged into the open
     /// session order before it has actually been opened.
-    static func decodeItem(_ string: String) -> Item? {
-        if let id = decode(.railFavourite, from: string) { return .site(id) }
+    static func decodeEntry(_ string: String) -> RailEntry? {
+        if let id = decode(.railFavourite, from: string) { return .favourite(id) }
         if let id = decode(.railTab, from: string) { return .tab(id) }
         if let id = decode(.railNote, from: string) { return .note(id) }
+        if let id = decode(.railTerminal, from: string) { return .terminal(id) }
         return nil
+    }
+
+    /// The payload a rail row carries while it is dragged.
+    static func encode(_ entry: RailEntry) -> String {
+        switch entry {
+        case .favourite(let id): encode(.railFavourite, id)
+        case .tab(let id): encode(.railTab, id)
+        case .note(let id): encode(.railNote, id)
+        case .terminal(let id): encode(.railTerminal, id)
+        }
     }
 }

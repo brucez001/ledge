@@ -153,4 +153,17 @@ final class RailLayoutTests: XCTestCase {
             )
         )
     }
+
+    /// Rows only reorder within their own section, so every kind of row has
+    /// to name one -- and only sessions share a section.
+    func testEachKindOfRowBelongsToItsOwnSection() {
+        let id = UUID()
+        XCTAssertEqual(RailEntry.favourite(id).group, .sessions)
+        XCTAssertEqual(RailEntry.tab(id).group, .sessions)
+        XCTAssertEqual(RailEntry.note(id).group, .notes)
+        XCTAssertEqual(RailEntry.terminal(id).group, .terminals)
+        XCTAssertEqual(RailEntry.terminal(id).terminalID, id)
+        XCTAssertNil(RailEntry.terminal(id).sessionKind)
+        XCTAssertNil(RailEntry.terminal(id).noteID)
+    }
 }

@@ -83,11 +83,32 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         keyCommandHandler?.install()
     }
 
+    /// Quitting ends every shell, so it is confirmed while any terminal is
+    /// running a command -- as Terminal does.
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        let commands = panelController.terminalController.tabs.flatMap(\.runningCommands)
+        guard !commands.isEmpty else { return .terminateNow }
+
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Quit Ledge?"
+        alert.informativeText = commands.count == 1
+            ? "\u{201C}\(commands[0])\u{201D} is still running in a terminal. Quitting ends it."
+            : "\(commands.count) commands are still running in terminals. Quitting ends them."
+        alert.addButton(withTitle: "Quit")
+        alert.addButton(withTitle: "Cancel")
+        NSApp.activate(ignoringOtherApps: true)
+        return alert.runModal() == .alertFirstButtonReturn ? .terminateNow : .terminateCancel
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         // Notes autosave on a debounce; flush any pending draft so quitting
         // mid-keystroke can never lose the last few characters.
         panelController.noteController.saveAllOpen()
+        // Saved before the shells end, so each terminal row reopens in the
+        // directory its shell was in.
         panelController.saveRail()
+        panelController.terminalController.terminateAll()
     }
 
     func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {

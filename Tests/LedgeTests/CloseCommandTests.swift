@@ -30,4 +30,12 @@ final class CloseCommandTests: XCTestCase {
             .closeNote(note)
         )
     }
+
+    func testCommandWClosesATerminalTab() {
+        let terminal = UUID()
+        XCTAssertEqual(
+            CloseCommand.resolve(destination: .terminal(terminal)),
+            .closeTerminal(terminal)
+        )
+    }
 }

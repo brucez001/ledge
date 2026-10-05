@@ -45,6 +45,14 @@ struct LauncherShell: View {
                 notesPane
                     .opacity(controller.isShowingNote ? 1 : 0)
                     .allowsHitTesting(controller.isShowingNote)
+
+                TerminalArea(
+                    controller: controller,
+                    terminalController: controller.terminalController,
+                    preferences: preferences
+                )
+                    .opacity(controller.isShowingTerminal ? 1 : 0)
+                    .allowsHitTesting(controller.isShowingTerminal)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
@@ -79,6 +87,9 @@ struct LauncherShell: View {
         .animation(preferences.animationSpeed.contentAnimation, value: controller.dockSide)
         .sheet(isPresented: $controller.isShowingAddFavourite) {
             AddFavouriteSheet(store: favourites)
+        }
+        .confirmTerminalClose($controller.pendingTerminalClose) {
+            controller.performTerminalClose($0)
         }
     }
 
