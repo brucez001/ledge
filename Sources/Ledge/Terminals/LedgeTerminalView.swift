@@ -53,6 +53,22 @@ final class LedgeTerminalView: LocalProcessTerminalView {
         onOutput?()
     }
 
+    /// Types `event` and returns `true` if it is a keypad key that
+    /// `TerminalKeypad` handles. SwiftTerm's `keyDown` cannot be overridden,
+    /// so the panel's key monitor calls this first.
+    func typeKeypadKey(_ event: NSEvent) -> Bool {
+        let text = TerminalKeypad.text(
+            keyCode: event.keyCode,
+            modifiers: event.modifierFlags,
+            characters: event.characters,
+            kittyKeyboard: !getTerminal().keyboardEnhancementFlags.isEmpty
+        )
+        guard let text else { return false }
+        selection.active = false
+        send(txt: text)
+        return true
+    }
+
     override func mouseDown(with event: NSEvent) {
         onClick?()
         super.mouseDown(with: event)
@@ -128,4 +144,3 @@ final class LedgeTerminalView: LocalProcessTerminalView {
         return (status >> 8) & 0xff
     }
 }
-

@@ -46,7 +46,8 @@ import WebKit
 ///             running a command asks first.
 ///
 /// While a terminal is shown, the site-only shortcuts from ⌘R down, and every
-/// key not listed here, reach it untouched; ⌘F and ⌘L do nothing there.
+/// key not listed here, reach it untouched, except that keypad keys type their
+/// characters (see `TerminalKeypad`); ⌘F and ⌘L do nothing there.
 @MainActor
 final class KeyCommandHandler {
     private let controller: PanelController
@@ -76,6 +77,10 @@ final class KeyCommandHandler {
         // at the separate Settings window -- only our own floating panel's
         // shortcuts belong here.
         guard window is LauncherPanel, controller.isPanelVisible else { return event }
+
+        if let terminal = window.firstResponder as? LedgeTerminalView, terminal.typeKeypadKey(event) {
+            return nil
+        }
 
         if event.keyCode == 53 {
             return handleEscape(event)
