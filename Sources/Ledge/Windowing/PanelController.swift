@@ -1149,6 +1149,13 @@ final class PanelController: NSObject, ObservableObject {
         terminalController.present(tab)
     }
 
+    /// A pane's title bar: focus that pane, as clicking into it does.
+    func focusTerminalPane(_ shellID: UUID, in tabID: UUID) {
+        guard let tab = terminalController.tab(for: tabID), tab.shell(for: shellID) != nil else { return }
+        tab.focus(shellID)
+        terminalController.present(tab)
+    }
+
     /// ⌘+ / ⌘- / ⌘0 while a terminal is shown. One size for every terminal,
     /// remembered across launches.
     func zoomTerminals(_ change: TerminalZoom) {
@@ -1171,15 +1178,20 @@ final class PanelController: NSObject, ObservableObject {
     }
 
     /// ⌘W: closes the focused pane, or the terminal when it is the last one.
-    /// Asks first while that pane is running a command.
     func requestCloseFocusedTerminalPane(_ id: UUID) {
         guard let tab = terminalController.tab(for: id) else { return }
+        requestCloseTerminalPane(tab.focusedShellID, in: id)
+    }
+
+    /// ⌘W and a pane's ✕: closes one pane, or the terminal when it is the
+    /// last one. Asks first while that pane is running a command.
+    func requestCloseTerminalPane(_ shellID: UUID, in tabID: UUID) {
+        guard let tab = terminalController.tab(for: tabID), let shell = tab.shell(for: shellID) else { return }
         guard tab.isSplit else {
-            requestCloseTerminal(id)
+            requestCloseTerminal(tabID)
             return
         }
-        let shell = tab.focusedShell
-        confirmOrClose(TerminalCloseRequest(tabID: id, paneID: shell.id, commands: [shell.currentCommand()].compactMap { $0 }))
+        confirmOrClose(TerminalCloseRequest(tabID: tabID, paneID: shellID, commands: [shell.currentCommand()].compactMap { $0 }))
     }
 
     private func confirmOrClose(_ request: TerminalCloseRequest) {

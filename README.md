@@ -65,7 +65,9 @@ I obtain one. Building from source following the steps below also avoids them.
   Light or Match Ledge in Settings.
 - Split a terminal right with **⌘D** or down with **⇧⌘D**, move between panes
   with **⌘[** / **⌘]** or **⌥⌘** and an arrow, and drag a divider to resize.
-  **⌘W** closes the focused pane. Splits come back after a restart.
+  Each pane of a split has a title bar naming its shell; click it to focus the
+  pane, or its **✕** to close that pane. **⌘W** closes the focused pane.
+  Splits come back after a restart.
 - Make terminal text larger or smaller with **⌘+** / **⌘−**, and reset it
   with **⌘0**.
 - Use keyboard shortcuts for quick access and navigation.

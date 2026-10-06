@@ -23,10 +23,82 @@ struct TerminalArea: View {
     }
 }
 
-/// What the notice over a failed pane can do.
+/// What a pane's title bar and the notice over a failed pane can do.
 private struct TerminalPaneActions {
+    let focus: (_ shellID: UUID, _ tabID: UUID) -> Void
     let restart: (_ shellID: UUID, _ tabID: UUID) -> Void
+    /// Asks first while the pane is running a command.
+    let requestClose: (_ shellID: UUID, _ tabID: UUID) -> Void
+    /// Closes without asking: only for a pane whose shell has ended.
     let close: (_ shellID: UUID, _ tabID: UUID) -> Void
+}
+
+/// A split pane's title bar: which shell the pane holds, and a ✕ that
+/// closes only that pane. Clicking the bar focuses its pane. The focused
+/// pane's bar is raised, matching the dimming over the panes around it.
+private struct TerminalPaneHeader: View {
+    @ObservedObject var tab: TerminalTab
+    let shell: TerminalShell
+    let focus: () -> Void
+    let close: () -> Void
+
+    @State private var isHoveringClose = false
+
+    private var isFocused: Bool { tab.focusedShellID == shell.id }
+
+    var body: some View {
+        let label = shell.paneLabel
+        HStack(spacing: 2) {
+            Button(action: close) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 9, weight: .semibold))
+                    .frame(width: 18, height: 18)
+                    .background(
+                        isHoveringClose ? Theme.controlHover : .clear,
+                        in: RoundedRectangle(cornerRadius: 4, style: .continuous)
+                    )
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .foregroundStyle(isFocused ? Theme.inkSecondary : Theme.inkTertiary)
+            .onHover { isHoveringClose = $0 }
+            .help("Close pane")
+            .accessibilityLabel("Close pane: \(label.title)")
+
+            Button(action: focus) {
+                HStack(spacing: 6) {
+                    Text(label.title)
+                        .font(.system(size: 11.5, weight: .medium))
+                        .foregroundStyle(isFocused ? Theme.ink : Theme.inkSecondary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .layoutPriority(1)
+                    if let detail = label.detail {
+                        Text(detail)
+                            .font(.system(size: 11))
+                            .foregroundStyle(Theme.inkTertiary)
+                            .lineLimit(1)
+                            // A path keeps its end, which is the part that differs.
+                            .truncationMode(.head)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help(shell.summary)
+            .accessibilityLabel(isFocused ? "Focused pane: \(label.title)" : "Pane: \(label.title)")
+            .accessibilityAddTraits(isFocused ? .isSelected : [])
+        }
+        .padding(.leading, 3)
+        .padding(.trailing, 8)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(
+            isFocused ? Theme.card : Theme.card.opacity(0.35),
+            in: RoundedRectangle(cornerRadius: 6, style: .continuous)
+        )
+    }
 }
 
 /// Shown over a pane whose shell has ended, which only stays open when the
@@ -81,7 +153,9 @@ private struct TerminalHostView: NSViewRepresentable {
 
     func makeNSView(context: Context) -> TerminalHostContainerView {
         let view = TerminalHostContainerView(actions: TerminalPaneActions(
+            focus: { [weak controller] in controller?.focusTerminalPane($0, in: $1) },
             restart: { [weak controller] in controller?.restartTerminalPane($0, in: $1) },
+            requestClose: { [weak controller] in controller?.requestCloseTerminalPane($0, in: $1) },
             close: { [weak controller] in controller?.closeTerminalPane($0, in: $1) }
         ))
         terminalController.presenter = { [weak view] in view?.present($0) }
@@ -208,8 +282,9 @@ private final class TerminalHostContainerView: NSView {
 }
 
 /// One terminal tab's panes: each shell's view laid out by the tab's split
-/// tree, with draggable dividers between them, the unfocused panes dimmed, and
-/// a notice over any pane whose shell has failed.
+/// tree, with draggable dividers between them, a title bar over each pane
+/// once there is more than one, the unfocused panes dimmed, and a notice over
+/// any pane whose shell has failed.
 private final class TerminalTabView: NSView {
     /// The gap between two panes, all of it a target for dragging the
     /// divider; only a hairline in its middle is drawn.
@@ -220,6 +295,7 @@ private final class TerminalTabView: NSView {
     let tab: TerminalTab
     private let actions: TerminalPaneActions
     private var dividerViews: [TerminalDividerView] = []
+    private var headerViews: [UUID: NSView] = [:]
     private var dimViews: [UUID: TerminalDimView] = [:]
     private var noticeViews: [UUID: NSView] = [:]
     /// Divider positions mid-drag, published to the tab only on release so a
@@ -288,6 +364,25 @@ private final class TerminalTabView: NSView {
             dimViews[id] = dim
         }
 
+        let titled = tab.isSplit ? ids : []
+        for (id, header) in headerViews where !titled.contains(id) {
+            header.removeFromSuperview()
+            headerViews[id] = nil
+        }
+        for shell in shells where titled.contains(shell.id) && headerViews[shell.id] == nil {
+            let (shellID, tabID, actions) = (shell.id, tab.id, actions)
+            let header = NSHostingView(rootView: TerminalPaneHeader(
+                tab: tab,
+                shell: shell,
+                focus: { actions.focus(shellID, tabID) },
+                close: { actions.requestClose(shellID, tabID) }
+            ))
+            // Sized by `layout()` alone.
+            header.sizingOptions = []
+            addSubview(header)
+            headerViews[shellID] = header
+        }
+
         let failed = Set(shells.filter { if case .exited = $0.state { true } else { false } }.map(\.id))
         for (id, notice) in noticeViews where !failed.contains(id) {
             notice.removeFromSuperview()
@@ -313,14 +408,19 @@ private final class TerminalTabView: NSView {
         let geometry = layout.geometry(in: bounds, dividerThickness: thickness)
 
         for pane in geometry.panes {
-            tab.shell(for: pane.id)?.view?.frame = pane.frame
+            let frames = TerminalPaneChrome.frames(for: pane.frame, showsHeader: tab.isSplit)
+            tab.shell(for: pane.id)?.view?.frame = frames.terminal
+            if let header = headerViews[pane.id], let frame = frames.header {
+                header.frame = frame
+            }
             if let dim = dimViews[pane.id] {
-                dim.frame = pane.frame
+                dim.frame = frames.terminal
                 dim.isHidden = !tab.isSplit || pane.id == tab.focusedShellID
             }
             if let notice = noticeViews[pane.id] {
-                let height = min(Self.noticeHeight, pane.frame.height)
-                notice.frame = NSRect(x: pane.frame.minX, y: pane.frame.maxY - height, width: pane.frame.width, height: height)
+                let terminal = frames.terminal
+                let height = min(Self.noticeHeight, terminal.height)
+                notice.frame = NSRect(x: terminal.minX, y: terminal.maxY - height, width: terminal.width, height: height)
             }
         }
 

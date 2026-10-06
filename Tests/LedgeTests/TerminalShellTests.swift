@@ -82,6 +82,25 @@ final class TerminalShellTests: XCTestCase {
         XCTAssertEqual(TerminalShell().displayTitle, "Terminal")
     }
 
+    func testAPaneTitleBarAddsTheDirectoryUnlessTheTitleShowsIt() {
+        let projects = URL(fileURLWithPath: "/Users/someone/dev", isDirectory: true)
+        func label(_ title: String, _ command: String? = nil, _ directory: URL? = nil) -> [String?] {
+            let label = TerminalPaneLabel(
+                title: title, runningCommand: command, directory: directory,
+                home: home, user: "someone", host: "Someones-Mac.local"
+            )
+            return [label.title, label.detail]
+        }
+
+        XCTAssertEqual(label("", nil, projects), ["~/dev", nil])
+        XCTAssertEqual(label("", "vim", projects), ["vim", "~/dev"])
+        XCTAssertEqual(label(" someone@someones-mac:~/dev ", nil, projects), ["~/dev", nil])
+        XCTAssertEqual(label("someone@build-box:~/dev", nil, projects), ["someone@build-box:~/dev", nil])
+        XCTAssertEqual(label("other@Someones-Mac:/srv", nil, projects), ["other@Someones-Mac:/srv", "~/dev"])
+        XCTAssertEqual(label("Claude Code", "node", projects), ["Claude Code", "~/dev"])
+        XCTAssertEqual(label(""), ["Terminal", nil])
+    }
+
     /// Starts the account's real login shell: the only way to see a
     /// pseudo-terminal, the process table, and reaping working together.
     func testAStartedShellReportsItsDirectoryAndIsCollectedWhenClosed() async throws {

@@ -158,6 +158,41 @@ final class TerminalTabTests: XCTestCase {
         XCTAssertNil(tab.shell(for: ids[1]))
     }
 
+    /// A pane's title bar can close a pane other than the focused one.
+    func testClosingAnotherPaneKeepsFocusWhereItIs() {
+        let tab = TerminalTab(arrangement: .split(
+            orientation: .sideBySide, fraction: 0.5,
+            first: .pane(directory: nil),
+            second: .split(orientation: .stacked, fraction: 0.5, first: .pane(directory: nil), second: .pane(directory: nil))
+        ))
+        let ids = tab.layout.paneIDs
+        tab.focus(ids[2])
+
+        XCTAssertTrue(tab.closePane(ids[0]))
+        XCTAssertEqual(tab.layout.paneIDs, [ids[1], ids[2]])
+        XCTAssertEqual(tab.focusedShellID, ids[2])
+    }
+
+    func testOnlySplitPanesGiveRoomToATitleBar() throws {
+        let pane = CGRect(x: 10, y: 20, width: 300, height: 200)
+
+        let single = TerminalPaneChrome.frames(for: pane, showsHeader: false)
+        XCTAssertNil(single.header)
+        XCTAssertEqual(single.terminal, pane)
+
+        let split = TerminalPaneChrome.frames(for: pane, showsHeader: true)
+        let header = try XCTUnwrap(split.header)
+        XCTAssertEqual(header, CGRect(x: 10, y: 20, width: 300, height: TerminalPaneChrome.headerHeight))
+        XCTAssertEqual(split.terminal.minY, header.maxY + TerminalPaneChrome.headerGap)
+        XCTAssertEqual(split.terminal.maxY, pane.maxY)
+        XCTAssertEqual(split.terminal.width, pane.width)
+
+        // A pane squeezed below its title bar never gets a negative height.
+        let tiny = TerminalPaneChrome.frames(for: CGRect(x: 0, y: 0, width: 100, height: 10), showsHeader: true)
+        XCTAssertEqual(tiny.header?.height, 10)
+        XCTAssertEqual(tiny.terminal.height, 0)
+    }
+
     /// Splits a real login shell, so the new pane starts beside it in the
     /// same directory.
     func testSplittingStartsANewShellInTheFocusedPanesDirectory() throws {

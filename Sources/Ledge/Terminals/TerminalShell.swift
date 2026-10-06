@@ -58,6 +58,12 @@ final class TerminalShell: ObservableObject, Identifiable {
         return "Terminal"
     }
 
+    /// The name on a split pane's title bar, which has room for the whole
+    /// directory rather than only its last component.
+    var paneLabel: TerminalPaneLabel {
+        TerminalPaneLabel(title: title, runningCommand: runningCommand, directory: directory)
+    }
+
     /// Where the shell is, and what it is doing, for the rail's hover card.
     var summary: String {
         var parts: [String] = []
@@ -226,4 +232,57 @@ enum TerminalPath {
         guard let url = URL(string: report), url.isFileURL, !url.path.isEmpty else { return nil }
         return URL(fileURLWithPath: url.path, isDirectory: true)
     }
+}
+
+/// What a split pane's title bar says: the shell's own title, else what is
+/// running, else where it is -- followed by the directory whenever the title
+/// does not already show it, so panes running the same thing in different
+/// places still read differently.
+struct TerminalPaneLabel: Equatable {
+    let title: String
+    let detail: String?
+
+    init(
+        title shellTitle: String,
+        runningCommand: String?,
+        directory: URL?,
+        home: URL = FileManager.default.homeDirectoryForCurrentUser,
+        user: String = NSUserName(),
+        host: String = TerminalPaneLabel.localHost
+    ) {
+        let path = directory.map { TerminalPath.abbreviated($0, home: home) }
+        let trimmed = Self.removingLocalPrefix(
+            from: shellTitle.trimmingCharacters(in: .whitespacesAndNewlines),
+            user: user,
+            host: host
+        )
+        let title = trimmed.isEmpty ? runningCommand ?? path ?? "Terminal" : trimmed
+        self.title = title
+        detail = path.flatMap { title.contains($0) ? nil : $0 }
+    }
+
+    /// zsh and bash setups commonly title a terminal `user@host:directory`.
+    /// Every pane on this Mac shares the `user@host:`, so it is dropped; a
+    /// title naming another user or machine, as over ssh, is kept whole.
+    static func removingLocalPrefix(from title: String, user: String, host: String) -> String {
+        guard title.hasPrefix(user + "@"), let colon = title.firstIndex(of: ":") else { return title }
+        let titleHost = title[title.index(title.startIndex, offsetBy: user.count + 1)..<colon]
+        guard Self.shortName(of: titleHost) == Self.shortName(of: host) else { return title }
+        let rest = title[title.index(after: colon)...].trimmingCharacters(in: .whitespaces)
+        return rest.isEmpty ? title : rest
+    }
+
+    /// The host name up to its first dot, which is what `%m` and `\h` show.
+    private static func shortName(of host: some StringProtocol) -> String {
+        String(host.prefix { $0 != "." }).lowercased()
+    }
+
+    /// This Mac's name as `gethostname` reports it, which unlike
+    /// `ProcessInfo.hostName` never waits on a network lookup.
+    static let localHost: String = {
+        var buffer = [CChar](repeating: 0, count: Int(MAXHOSTNAMELEN) + 1)
+        guard gethostname(&buffer, buffer.count - 1) == 0 else { return "" }
+        let bytes = buffer.prefix { $0 != 0 }.map { UInt8(bitPattern: $0) }
+        return String(decoding: bytes, as: UTF8.self)
+    }()
 }

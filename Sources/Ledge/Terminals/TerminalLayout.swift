@@ -244,6 +244,25 @@ struct TerminalGeometry: Equatable {
     }
 }
 
+/// Where a pane's title bar and terminal sit within the pane's frame, in the
+/// layout's flipped space.
+///
+/// Only split panes have a title bar: a tab with one pane is already named,
+/// and closed, by its rail row.
+enum TerminalPaneChrome {
+    static let headerHeight: CGFloat = 24
+    /// Between the title bar and the terminal beneath it.
+    static let headerGap: CGFloat = 4
+
+    static func frames(for pane: CGRect, showsHeader: Bool) -> (header: CGRect?, terminal: CGRect) {
+        guard showsHeader else { return (nil, pane) }
+        let header = CGRect(x: pane.minX, y: pane.minY, width: pane.width, height: min(headerHeight, pane.height))
+        let top = min(header.maxY + headerGap, pane.maxY)
+        let terminal = CGRect(x: pane.minX, y: top, width: pane.width, height: pane.maxY - top)
+        return (header, terminal)
+    }
+}
+
 /// A terminal tab's panes as they survive a quit: the shape of the splits and
 /// each pane's directory, never what any of them printed or ran.
 indirect enum TerminalArrangement: Codable, Equatable, Sendable {
