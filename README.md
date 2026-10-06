@@ -47,30 +47,15 @@ I obtain one. Building from source following the steps below also avoids them.
 
 ## Features
 
-- Dock the panel on the left or right edge of your Mac.
-- Reveal it with edge hover or **⇧⌘Space**.
-- Resize the panel to suit your workflow.
-- Keep the panel open persistently when you need it.
-- Turn off reveal on edge hover when it becomes annoying.
-- Save favourite sites for quick access.
-- Pick up where you left off: the sidebar comes back after a restart, and a
-  restored site loads only once you select it.
-- Take quick Markdown notes with **⌘N** — they open as tabs beside your
-  sessions, styled as you type, with a rendered preview on **⇧⌘P**.
-- Notes are saved on your Mac as plain Markdown files and never leave it.
-- Open a terminal from Home or with **⌥⌘T** — your login shell in a tab that
-  keeps running while the panel is hidden. Closing one that is still running a
-  command asks first, and a restored terminal starts its shell only once you
-  select it. Terminals are dark by default, even in a light panel; choose
-  Light or Match Ledge in Settings.
-- Split a terminal right with **⌘D** or down with **⇧⌘D**, move between panes
-  with **⌘[** / **⌘]** or **⌥⌘** and an arrow, and drag a divider to resize.
-  Each pane of a split has a title bar naming its shell; click it to focus the
-  pane, or its **✕** to close that pane. **⌘W** closes the focused pane.
-  Splits come back after a restart.
-- Make terminal text larger or smaller with **⌘+** / **⌘−**, and reset it
-  with **⌘0**.
-- Use keyboard shortcuts for quick access and navigation.
+- **Edge panel** — docks to the left or right edge. Reveal it by hovering
+  there, resize it, or pin it open. Edge hover can be turned off.
+- **Sites** — keep favourites on Home; open sites keep their sessions.
+- **Notes** — Markdown notes, styled as you type, with a rendered preview.
+  Saved on your Mac as plain files.
+- **Terminals** — your login shell in a tab. Split it into panes, each with a
+  title bar and a **✕** to close it.
+- **Restored at launch** — the sidebar comes back after a restart, and a
+  restored site or terminal loads only when you select it.
 
 ## Requirements
 
