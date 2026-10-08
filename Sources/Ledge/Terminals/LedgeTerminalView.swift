@@ -54,18 +54,31 @@ final class LedgeTerminalView: LocalProcessTerminalView {
     }
 
     /// Types `event` and returns `true` if it is a keypad key that
-    /// `TerminalKeypad` handles. SwiftTerm's `keyDown` cannot be overridden,
-    /// so the panel's key monitor calls this first.
-    func typeKeypadKey(_ event: NSEvent) -> Bool {
-        let text = TerminalKeypad.text(
+    /// `TerminalKeypad` handles or a text-editing shortcut that
+    /// `TerminalLineEditing` handles. SwiftTerm's `keyDown` cannot be
+    /// overridden, so the panel's key monitor calls this first.
+    func typeTranslatedKey(_ event: NSEvent) -> Bool {
+        let terminal = getTerminal()
+        let kittyKeyboard = !terminal.keyboardEnhancementFlags.isEmpty
+        if let text = TerminalKeypad.text(
             keyCode: event.keyCode,
             modifiers: event.modifierFlags,
             characters: event.characters,
-            kittyKeyboard: !getTerminal().keyboardEnhancementFlags.isEmpty
-        )
-        guard let text else { return false }
+            kittyKeyboard: kittyKeyboard
+        ) {
+            selection.active = false
+            send(txt: text)
+            return true
+        }
+        // An input method composing text owns the editing keys.
+        guard !hasMarkedText(), let bytes = TerminalLineEditing.bytes(
+            keyCode: event.keyCode,
+            modifiers: event.modifierFlags,
+            kittyKeyboard: kittyKeyboard,
+            alternateScreen: terminal.isCurrentBufferAlternate
+        ) else { return false }
         selection.active = false
-        send(txt: text)
+        send(bytes)
         return true
     }
 
