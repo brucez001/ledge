@@ -62,7 +62,10 @@ final class KeyCommandHandler {
 
     func install() {
         monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-            self?.handle(event) ?? event
+            // `handle` returns nil to swallow the key, so the missing-handler
+            // fallback must not use `??`, which would replace that nil.
+            guard let self else { return event }
+            return self.handle(event)
         }
     }
 
