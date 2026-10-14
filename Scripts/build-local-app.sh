@@ -3,9 +3,10 @@
 # build-local-app.sh
 #
 # Builds the Ledge Swift package in release mode and packages the
-# resulting executable into a local, ad-hoc-signed Ledge.app bundle
-# for personal use on this Mac. No App Store / notarization / signing
-# credentials are required.
+# resulting executable into a local Ledge.app bundle for personal use on
+# this Mac. No App Store / notarization / signing credentials are required:
+# it signs with the first "Apple Development" identity in the keychain when
+# there is one, else ad hoc.
 #
 # Usage:
 #   Scripts/build-local-app.sh [--open] [--install]
@@ -17,7 +18,7 @@
 # Environment overrides:
 #   APP_VERSION           CFBundleShortVersionString (default 0.1.0).
 #   APP_BUILD             CFBundleVersion (default: current timestamp).
-#   LEDGE_SIGN_IDENTITY   Codesigning identity. Defaults to "-" (ad-hoc).
+#   LEDGE_SIGN_IDENTITY   Codesigning identity. "-" forces ad-hoc signing.
 #                         Set to a "Developer ID Application: ..." identity
 #                         to produce a distributable, notarisable bundle;
 #                         this also enables the hardened runtime and a
@@ -210,15 +211,31 @@ fi
 # ---------------------------------------------------------------------------
 # 3. Code sign
 #
-# Ad-hoc by default, so a local build launches without Gatekeeper complaining.
+# Without LEDGE_SIGN_IDENTITY, sign with an Apple Development identity when
+# one exists. The keychain grants access to an app's items, including
+# WebKit's WebCrypto master key, by its designated requirement; ad hoc that
+# is the build's own hash, so every rebuild would ask for the login password
+# again. A certificate-based requirement survives rebuilds. This local
+# signature gets no hardened runtime, which would need camera and microphone
+# entitlements before WebKit could capture.
+#
 # With LEDGE_SIGN_IDENTITY set, sign for distribution instead: the hardened
 # runtime and a secure timestamp are both prerequisites for notarisation.
 # ---------------------------------------------------------------------------
 
-SIGN_IDENTITY="${LEDGE_SIGN_IDENTITY:--}"
+SIGN_IDENTITY="${LEDGE_SIGN_IDENTITY:-}"
+LOCAL_IDENTITY=""
+if [[ -z "${SIGN_IDENTITY}" ]]; then
+  LOCAL_IDENTITY="$(security find-identity -v -p codesigning 2>/dev/null \
+    | awk '/"Apple Development/ { print $2; exit }')"
+  SIGN_IDENTITY="-"
+fi
 
 if command -v codesign >/dev/null 2>&1; then
-  if [[ "${SIGN_IDENTITY}" == "-" ]]; then
+  if [[ -n "${LOCAL_IDENTITY}" ]]; then
+    echo "==> Signing ${APP_BUNDLE} with Apple Development identity ${LOCAL_IDENTITY}"
+    codesign --force --sign "${LOCAL_IDENTITY}" "${APP_BUNDLE}"
+  elif [[ "${SIGN_IDENTITY}" == "-" ]]; then
     echo "==> Ad-hoc signing ${APP_BUNDLE}"
     codesign --force --sign - "${APP_BUNDLE}" || {
       echo "warning: ad-hoc codesign failed; the app may show a Gatekeeper prompt on first launch." >&2

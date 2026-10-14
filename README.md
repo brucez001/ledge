@@ -88,6 +88,10 @@ Scripts/build-local-app.sh --open
 
 The bundle is written to `build/Ledge.app`.
 
+If your keychain has an Apple Development certificate, the script signs the app
+with it; otherwise it signs ad hoc. Ad-hoc builds ask for your login keychain
+password again after every rebuild, because macOS treats each one as a new app.
+
 Use the app-bundle build for normal use and for bundle-only behaviour such as
 launch at login and website camera or microphone permissions.
 
