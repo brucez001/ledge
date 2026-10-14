@@ -1320,6 +1320,28 @@ final class PanelController: NSObject, ObservableObject {
         selectEntry(entry)
     }
 
+    /// The rail row the main pane is showing, or `nil` on Home.
+    var activeRailEntry: RailEntry? {
+        switch destination {
+        case .home: nil
+        case .favourite(let id): .favourite(id)
+        case .tab(let id): .tab(id)
+        case .note(let id): .note(id)
+        case .terminal(let id): .terminal(id)
+        }
+    }
+
+    /// Selects the rail row `offset` positions below the current one (above
+    /// it when negative), wrapping past either end.
+    func selectRailEntry(steppingBy offset: Int) {
+        guard let entry = RailLayout.entry(
+            steppingBy: offset,
+            from: activeRailEntry,
+            in: railEntries
+        ) else { return }
+        selectEntry(entry)
+    }
+
     /// Selects whatever rail row was clicked or named.
     func selectEntry(_ entry: RailEntry) {
         switch entry {

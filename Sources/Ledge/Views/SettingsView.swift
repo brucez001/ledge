@@ -179,6 +179,8 @@ private struct ShortcutsSettingsTab: View {
         .init(keys: GlobalShortcut.togglePanel.displayName, action: "Show or hide the panel"),
         .init(keys: GlobalShortcut.toggleEdgeReveal.displayName, action: "Turn reveal on edge hover on or off"),
         .init(keys: "⌘1 – ⌘9", action: "Select the Nth open session, note, or terminal in the sidebar, counting from the top"),
+        .init(keys: "⇧⌘↓  /  ⌃Tab", action: "Select the item below in the sidebar, wrapping to the top"),
+        .init(keys: "⇧⌘↑  /  ⌃⇧Tab", action: "Select the item above in the sidebar, wrapping to the bottom"),
         .init(keys: "⌘0", action: "Reset zoom on a site or terminal, else go home"),
         .init(keys: "⇧⌘H", action: "Go home"),
         .init(keys: "⌘L", action: "Focus the address or search field"),

@@ -21,6 +21,43 @@ final class RailLayoutTests: XCTestCase {
         XCTAssertEqual(RailLayout.entry(numbered: 2, in: entries), .favourite(siteA))
     }
 
+    func testSteppingMovesOneRowAcrossSections() {
+        let note = UUID()
+        let entries: [RailEntry] = [.tab(tabA), .favourite(siteA), .note(note)]
+        XCTAssertEqual(RailLayout.entry(steppingBy: 1, from: .favourite(siteA), in: entries), .note(note))
+        XCTAssertEqual(RailLayout.entry(steppingBy: -1, from: .favourite(siteA), in: entries), .tab(tabA))
+    }
+
+    func testSteppingWrapsPastEitherEnd() {
+        let entries: [RailEntry] = [.tab(tabA), .tab(tabB)]
+        XCTAssertEqual(RailLayout.entry(steppingBy: 1, from: .tab(tabB), in: entries), .tab(tabA))
+        XCTAssertEqual(RailLayout.entry(steppingBy: -1, from: .tab(tabA), in: entries), .tab(tabB))
+    }
+
+    func testSteppingFromHomeStartsAtTheNearEnd() {
+        let entries: [RailEntry] = [.tab(tabA), .tab(tabB)]
+        XCTAssertEqual(RailLayout.entry(steppingBy: 1, from: nil, in: entries), .tab(tabA))
+        XCTAssertEqual(RailLayout.entry(steppingBy: -1, from: nil, in: entries), .tab(tabB))
+        XCTAssertEqual(RailLayout.entry(steppingBy: 1, from: .favourite(siteA), in: entries), .tab(tabA))
+    }
+
+    func testSteppingAnEmptyRailDoesNothing() {
+        XCTAssertNil(RailLayout.entry(steppingBy: 1, from: nil, in: []))
+        XCTAssertEqual(RailLayout.entry(steppingBy: 1, from: .tab(tabA), in: [.tab(tabA)]), .tab(tabA))
+    }
+
+    func testRailStepShortcuts() {
+        XCTAssertEqual(RailStepShortcut.offset(keyCode: 48, modifiers: .control), 1)
+        XCTAssertEqual(RailStepShortcut.offset(keyCode: 48, modifiers: [.control, .shift]), -1)
+        XCTAssertEqual(RailStepShortcut.offset(keyCode: 125, modifiers: [.shift, .command, .function, .numericPad]), 1)
+        XCTAssertEqual(RailStepShortcut.offset(keyCode: 126, modifiers: [.shift, .command, .function, .numericPad]), -1)
+        XCTAssertNil(RailStepShortcut.offset(keyCode: 48, modifiers: []))
+        XCTAssertNil(RailStepShortcut.offset(keyCode: 125, modifiers: .command))
+        XCTAssertNil(RailStepShortcut.offset(keyCode: 126, modifiers: [.command, .option]))
+        XCTAssertNil(RailStepShortcut.offset(keyCode: 125, modifiers: [.shift, .command, .option]))
+        XCTAssertNil(RailStepShortcut.offset(keyCode: 125, modifiers: [.control, .command]))
+    }
+
     func testNumberedShortcutBeyondTheRailDoesNothing() {
         let entries: [RailEntry] = [.tab(tabA), .tab(tabB)]
         XCTAssertNil(RailLayout.entry(numbered: 3, in: entries))

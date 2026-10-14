@@ -14,6 +14,8 @@ import WebKit
 ///
 /// Mapped shortcuts (kept in sync with `SettingsView`'s Shortcuts tab):
 ///   ⌘1 … ⌘9   Select the Nth open item in the rail, counting from the top
+///   ⇧⌘↓ / ⌃Tab   Select the rail item below, wrapping to the top
+///   ⇧⌘↑ / ⌃⇧Tab  Select the rail item above, wrapping to the bottom
 ///   ⌘0        Reset zoom on a site or terminal, else go home
 ///   ⇧⌘H       Go home (always)
 ///   ⌘L        Focus the address field (browser) / search field (home)
@@ -108,6 +110,11 @@ final class KeyCommandHandler {
 
         if flags.contains(.command), chars == "n" {
             controller.openNewNote()
+            return nil
+        }
+
+        if let offset = RailStepShortcut.offset(keyCode: event.keyCode, modifiers: flags) {
+            controller.selectRailEntry(steppingBy: offset)
             return nil
         }
 
@@ -323,5 +330,23 @@ final class KeyCommandHandler {
             view = current.superview
         }
         return false
+    }
+}
+
+/// Which way a rail-stepping shortcut moves: 1 for down the rail, -1 for up.
+///
+/// ⇧⌘↑ and ⇧⌘↓ follow the rail's vertical layout, so they take precedence
+/// over select-to-start/end in text; ⌃Tab is the Mac's tab-cycling convention.
+enum RailStepShortcut {
+    private static let tab: UInt16 = 48
+    private static let down: UInt16 = 125
+    private static let up: UInt16 = 126
+
+    static func offset(keyCode: UInt16, modifiers: NSEvent.ModifierFlags) -> Int? {
+        switch (keyCode, modifiers.intersection([.command, .option, .control, .shift])) {
+        case (tab, .control), (down, [.shift, .command]): 1
+        case (tab, [.control, .shift]), (up, [.shift, .command]): -1
+        default: nil
+        }
     }
 }

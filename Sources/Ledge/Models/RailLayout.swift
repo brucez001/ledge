@@ -130,6 +130,23 @@ enum RailLayout {
         return entries[index]
     }
 
+    /// The row ⇧⌘↓ / ⌃Tab (`offset` 1) or ⇧⌘↑ / ⌃⇧Tab (`offset` -1) moves to,
+    /// wrapping past either end as browser tab cycling does. With no row
+    /// selected, as on Home, moving down lands on the top row and moving up
+    /// on the bottom one.
+    static func entry(
+        steppingBy offset: Int,
+        from current: RailEntry?,
+        in entries: [RailEntry]
+    ) -> RailEntry? {
+        guard !entries.isEmpty, offset != 0 else { return nil }
+        guard let current, let index = entries.firstIndex(of: current) else {
+            return offset > 0 ? entries.first : entries.last
+        }
+        let count = entries.count
+        return entries[((index + offset) % count + count) % count]
+    }
+
     /// Which row edge should show the insertion line while `dragged` hovers
     /// over `target`, or `nil` when releasing would change nothing.
     ///
