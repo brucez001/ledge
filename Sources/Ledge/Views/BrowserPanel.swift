@@ -236,11 +236,36 @@ struct BrowserToolbar: View {
                 onFocusChange: handleFocusChange
             )
             .frame(maxWidth: .infinity)
+
+            openExternallyButton
         }
-        .padding(.horizontal, 12)
+        .padding(.leading, 12)
+        .padding(.trailing, 4)
         .frame(height: Theme.Metrics.addressPillHeight)
         .frame(maxWidth: .infinity)
         .background(Theme.card, in: Capsule())
+    }
+
+    /// `NSWorkspace.open` has nothing to hand off for a blank session, and
+    /// handing it a `file://` URL would open the user's editor rather than a
+    /// browser, so both cases disable the control.
+    private var canOpenExternally: Bool {
+        guard let url = session.currentURL else { return false }
+        return !url.isFileURL
+    }
+
+    private var openExternallyButton: some View {
+        Button(action: session.openInDefaultBrowser) {
+            Image(systemName: "arrow.up.right")
+                .font(.system(size: 11, weight: .semibold))
+                .frame(width: 22, height: 22)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .foregroundStyle(Theme.inkSecondary)
+        .disabled(!canOpenExternally)
+        .help("Open in default browser (⇧⌘O)")
+        .accessibilityLabel("Open in default browser")
     }
 
     /// While unfocused, the field shows the tidy `displayHost`; while
@@ -279,7 +304,6 @@ struct BrowserToolbar: View {
         }
 
         Button("Copy address") { session.copyCurrentURL() }
-        Button("Open in default browser") { session.openInDefaultBrowser() }
         Button("Duplicate") {
             guard let url = session.currentURL else { return }
             controller.openInNewSession(url, iconHost: session.iconHost)
