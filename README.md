@@ -54,8 +54,6 @@ I obtain one. Building from source following the steps below also avoids them.
   Saved on your Mac as plain files.
 - **Terminals** — your login shell in a tab. Split it into panes, each with a
   title bar and a **✕** to close it.
-- **Restored at launch** — the sidebar comes back after a restart, and a
-  restored site or terminal loads only when you select it.
 
 ## Requirements
 
